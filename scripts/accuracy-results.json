@@ -1,0 +1,449 @@
+{
+  "timestamp": "2026-04-04T17:18:55.330Z",
+  "totalCases": 50,
+  "ruleBased": {
+    "coverage": 20,
+    "correct": 15,
+    "accuracy": 75,
+    "overallAccuracy": 30
+  },
+  "ai": {
+    "correct": 41,
+    "accuracy": 82,
+    "byDifficulty": {
+      "easy": {
+        "total": 10,
+        "correct": 10
+      },
+      "medium": {
+        "total": 15,
+        "correct": 14
+      },
+      "hard": {
+        "total": 25,
+        "correct": 17
+      }
+    }
+  },
+  "hybrid": {
+    "correct": 42,
+    "accuracy": 84
+  },
+  "errors": [
+    {
+      "description": "スターバックス",
+      "predicted": "雑費",
+      "expected": "会議費",
+      "correct": false,
+      "difficulty": "medium"
+    },
+    {
+      "description": "ATM 3月28日",
+      "predicted": "雑費",
+      "expected": "支払手数料",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "佐藤 立替精算",
+      "predicted": "旅費交通費",
+      "expected": "雑費",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "安全大会 参加費",
+      "predicted": "雑費",
+      "expected": "福利厚生費",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "ゴルフ場利用税",
+      "predicted": "租税公課",
+      "expected": "交際費",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "任意保険 車両",
+      "predicted": "保険料",
+      "expected": "車両費",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "カインズ 養生シート等",
+      "predicted": "消耗品費",
+      "expected": "材料仕入高",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "商工会議所 年会費",
+      "predicted": "雑費",
+      "expected": "支払手数料",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "労働保険料 概算納付",
+      "predicted": "租税公課",
+      "expected": "法定福利費",
+      "correct": false,
+      "difficulty": "hard"
+    }
+  ],
+  "details": [
+    {
+      "description": "給与 山田太郎",
+      "predicted": "給料手当",
+      "expected": "給料手当",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "家賃 4月分",
+      "predicted": "地代家賃",
+      "expected": "地代家賃",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "東京電力EP 電気料金",
+      "predicted": "水道光熱費",
+      "expected": "水道光熱費",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "NTTドコモ 携帯料金",
+      "predicted": "通信費",
+      "expected": "通信費",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "ENEOS SSガソリン",
+      "predicted": "車両費",
+      "expected": "車両費",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "振込手数料",
+      "predicted": "支払手数料",
+      "expected": "支払手数料",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "ABC建設 工事代金",
+      "predicted": "売上高",
+      "expected": "売上高",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "山田工務店 請求書入金",
+      "predicted": "売上高",
+      "expected": "売上高",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "Amazon.co.jp 事務用品",
+      "predicted": "消耗品費",
+      "expected": "消耗品費",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "社会保険料 3月分",
+      "predicted": "法定福利費",
+      "expected": "法定福利費",
+      "correct": true,
+      "difficulty": "easy"
+    },
+    {
+      "description": "セメント 50袋 ホームセンター",
+      "predicted": "材料仕入高",
+      "expected": "材料仕入高",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "山田建材 鉄筋代",
+      "predicted": "材料仕入高",
+      "expected": "材料仕入高",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "田中電工 電気工事",
+      "predicted": "外注費",
+      "expected": "外注費",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "スターバックス",
+      "predicted": "雑費",
+      "expected": "会議費",
+      "correct": false,
+      "difficulty": "medium"
+    },
+    {
+      "description": "居酒屋 はなの舞 5名",
+      "predicted": "交際費",
+      "expected": "交際費",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "JR東日本 Suica チャージ",
+      "predicted": "旅費交通費",
+      "expected": "旅費交通費",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "ヤマト運輸 送料",
+      "predicted": "荷造運賃",
+      "expected": "荷造運賃",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "月極駐車場 4月分",
+      "predicted": "地代家賃",
+      "expected": "地代家賃",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "コマツ リース料",
+      "predicted": "リース料",
+      "expected": "リース料",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "固定資産税 第1期",
+      "predicted": "租税公課",
+      "expected": "租税公課",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "Google広告 クリック費用",
+      "predicted": "広告宣伝費",
+      "expected": "広告宣伝費",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "オリックス自動車 車両リース",
+      "predicted": "リース料",
+      "expected": "リース料",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "印紙代 4000円",
+      "predicted": "租税公課",
+      "expected": "租税公課",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "利息",
+      "predicted": "受取利息",
+      "expected": "受取利息",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "水道代 3月分",
+      "predicted": "水道光熱費",
+      "expected": "水道光熱費",
+      "correct": true,
+      "difficulty": "medium"
+    },
+    {
+      "description": "㈱鈴木組 残金",
+      "predicted": "売上高",
+      "expected": "売上高",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "ATM 3月28日",
+      "predicted": "雑費",
+      "expected": "支払手数料",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "佐藤 立替精算",
+      "predicted": "旅費交通費",
+      "expected": "雑費",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "Amazonビジネス PC周辺機器",
+      "predicted": "消耗品費",
+      "expected": "消耗品費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "アスクル 現場消耗品",
+      "predicted": "消耗品費",
+      "expected": "消耗品費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "安全大会 参加費",
+      "predicted": "雑費",
+      "expected": "福利厚生費",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "ミシマ塗装 塗装工事一式",
+      "predicted": "外注費",
+      "expected": "外注費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "現場仮設トイレ レンタル",
+      "predicted": "リース料",
+      "expected": "リース料",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "ゴルフ場利用税",
+      "predicted": "租税公課",
+      "expected": "交際費",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "㈱TKC 会計ソフト利用料",
+      "predicted": "支払手数料",
+      "expected": "支払手数料",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "源泉所得税 納付",
+      "predicted": "租税公課",
+      "expected": "租税公課",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "UR都市機構 現場事務所",
+      "predicted": "地代家賃",
+      "expected": "地代家賃",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "任意保険 車両",
+      "predicted": "保険料",
+      "expected": "車両費",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "中央労金 借入返済",
+      "predicted": "雑費",
+      "expected": "雑費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "カインズ 養生シート等",
+      "predicted": "消耗品費",
+      "expected": "材料仕入高",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "タクシー 現場→駅",
+      "predicted": "旅費交通費",
+      "expected": "旅費交通費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "㈱佐川急便 建材配送",
+      "predicted": "荷造運賃",
+      "expected": "荷造運賃",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "Canon コピー機保守",
+      "predicted": "修繕費",
+      "expected": "修繕費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "商工会議所 年会費",
+      "predicted": "雑費",
+      "expected": "支払手数料",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "日刊建設新聞",
+      "predicted": "新聞図書費",
+      "expected": "新聞図書費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "協力業者 忘年会",
+      "predicted": "交際費",
+      "expected": "交際費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "労働保険料 概算納付",
+      "predicted": "租税公課",
+      "expected": "法定福利費",
+      "correct": false,
+      "difficulty": "hard"
+    },
+    {
+      "description": "健康診断 スタッフ5名",
+      "predicted": "福利厚生費",
+      "expected": "福利厚生費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "ダンプ車検 整備費",
+      "predicted": "車両費",
+      "expected": "車両費",
+      "correct": true,
+      "difficulty": "hard"
+    },
+    {
+      "description": "振込 PQR商事",
+      "predicted": "売上高",
+      "expected": "売上高",
+      "correct": true,
+      "difficulty": "hard"
+    }
+  ]
+}

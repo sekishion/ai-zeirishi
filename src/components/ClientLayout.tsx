@@ -7,7 +7,7 @@ import { AppProvider } from '@/components/AppProvider';
 import { useApp } from '@/lib/store';
 import { BottomNavConnected } from '@/components/shared/BottomNavConnected';
 
-const NO_NAV_PAGES = ['/line', '/onboarding'];
+const NO_NAV_PAGES = ['/line', '/onboarding', '/login'];
 
 function LayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

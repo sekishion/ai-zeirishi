@@ -296,4 +296,106 @@ async function runTest() {
   console.log('\n結果を scripts/accuracy-results.json に保存しました');
 }
 
-runTest().catch(console.error);
+// ====== Claude Haiku + グラウンディング版テスト ======
+async function aiCategorizeGrounded(transactions: { description: string; amount: number; type: string }[]): Promise<{ category: string; counterparty: string }[]> {
+  const Anthropic = (await import('@anthropic-ai/sdk')).default;
+  const { buildGroundedPrompt } = await import('../src/lib/grounding');
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const systemPrompt = buildGroundedPrompt('建設業');
+
+  const txList = transactions.map((tx, i) =>
+    `${i + 1}. ${tx.type === 'income' ? '入金' : '出金'} ¥${tx.amount.toLocaleString()} 「${tx.description}」`
+  ).join('\n');
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 4096,
+    temperature: 0,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: `以下の${transactions.length}件の取引を分類してください。JSON配列のみ返してください。\n各要素: {"category": "勘定科目名", "counterparty": "取引先名"}\n\n${txList}` }],
+  });
+
+  const raw = response.content[0].type === 'text' ? response.content[0].text : '[]';
+  const jsonMatch = raw.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) throw new Error('No JSON in response');
+  return JSON.parse(jsonMatch[0]);
+}
+
+async function runGroundedTest() {
+  console.log('\n========================================');
+  console.log('=== Claude Haiku + グラウンディング版 ===');
+  console.log('========================================\n');
+
+  const batchSize = 25;
+  const results: { description: string; predicted: string; expected: string; correct: boolean; difficulty: string }[] = [];
+  let correct = 0;
+
+  for (let i = 0; i < TEST_CASES.length; i += batchSize) {
+    const batch = TEST_CASES.slice(i, i + batchSize);
+    console.log(`  バッチ ${Math.floor(i / batchSize) + 1}: ${batch.length}件を分類中...`);
+
+    try {
+      const predictions = await aiCategorizeGrounded(
+        batch.map(tc => ({ description: tc.description, amount: tc.amount, type: tc.type }))
+      );
+
+      for (let j = 0; j < batch.length; j++) {
+        const tc = batch[j];
+        const pred = predictions[j];
+        const isCorrect = pred?.category === tc.expected.category;
+        if (isCorrect) correct++;
+        results.push({
+          description: tc.description,
+          predicted: pred?.category || '(なし)',
+          expected: tc.expected.category,
+          correct: isCorrect,
+          difficulty: tc.difficulty,
+        });
+      }
+    } catch (err) {
+      console.error(`  バッチ失敗:`, err);
+      for (const tc of batch) {
+        results.push({ description: tc.description, predicted: '(エラー)', expected: tc.expected.category, correct: false, difficulty: tc.difficulty });
+      }
+    }
+  }
+
+  console.log(`\nClaude Haiku + グラウンディング 正解率: ${correct}/${TEST_CASES.length} (${Math.round(correct / TEST_CASES.length * 100)}%)`);
+
+  console.log('\n--- 難易度別正解率 ---');
+  for (const diff of ['easy', 'medium', 'hard'] as const) {
+    const subset = results.filter(r => r.difficulty === diff);
+    const c = subset.filter(r => r.correct).length;
+    console.log(`  ${diff}: ${c}/${subset.length} (${subset.length > 0 ? Math.round(c / subset.length * 100) : 0}%)`);
+  }
+
+  const errors = results.filter(r => !r.correct);
+  if (errors.length > 0) {
+    console.log('\n--- 間違い一覧 ---');
+    for (const e of errors) {
+      console.log(`  [${e.difficulty}] 「${e.description}」 → ${e.predicted} (正解: ${e.expected})`);
+    }
+  }
+
+  // 結果を保存
+  const fs = await import('fs');
+  const prev = JSON.parse(fs.readFileSync('scripts/accuracy-results.json', 'utf8'));
+  prev.claudeGrounded = {
+    correct,
+    accuracy: Math.round(correct / TEST_CASES.length * 100),
+    byDifficulty: {
+      easy: { total: results.filter(r => r.difficulty === 'easy').length, correct: results.filter(r => r.difficulty === 'easy' && r.correct).length },
+      medium: { total: results.filter(r => r.difficulty === 'medium').length, correct: results.filter(r => r.difficulty === 'medium' && r.correct).length },
+      hard: { total: results.filter(r => r.difficulty === 'hard').length, correct: results.filter(r => r.difficulty === 'hard' && r.correct).length },
+    },
+    errors,
+  };
+  fs.writeFileSync('scripts/accuracy-results.json', JSON.stringify(prev, null, 2));
+  console.log('\n結果を scripts/accuracy-results.json に追記しました');
+}
+
+// 両方実行
+runTest()
+  .then(() => runGroundedTest())
+  .catch(console.error);

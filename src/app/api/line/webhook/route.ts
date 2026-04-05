@@ -138,12 +138,12 @@ export async function POST(req: NextRequest) {
           console.log('[LINE Webhook] Reply sent successfully');
 
         } else if (event.message.type === 'image') {
-          console.log('[LINE Webhook] Fetching image...');
-          const imageBuffer = await getImageContent(event.message.id);
-          console.log(`[LINE Webhook] Image size: ${imageBuffer.length} bytes`);
-          const ocrResult = await processReceipt(imageBuffer);
-          await replyMessage(replyToken, [{ type: 'text', text: ocrResult }]);
-          console.log('[LINE Webhook] OCR reply sent');
+          console.log('[LINE Webhook] Image received');
+          await replyMessage(replyToken, [{
+            type: 'text',
+            text: '🧾 レシートを受け取りました！\n\n読み取り機能は現在準備中です。\nお手数ですが、以下をテキストで教えてください：\n\n💴 金額（例: 1280円）\n🏪 店名（例: スターバックス）\n📂 何の費用か（例: 打ち合わせのコーヒー代）\n\n入力例:\n「スタバ 1280円 打ち合わせ」',
+          }]);
+          console.log('[LINE Webhook] Image receipt reply sent');
 
         } else {
           await replyMessage(replyToken, [{

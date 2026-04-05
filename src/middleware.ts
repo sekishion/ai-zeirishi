@@ -16,7 +16,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
+          cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
           response = NextResponse.next({
@@ -33,18 +33,20 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   // 未ログインで保護ページにアクセス → ログインへリダイレクト
-  const isLoginPage = request.nextUrl.pathname === '/login';
+  const isPublicPage = request.nextUrl.pathname === '/login'
+    || request.nextUrl.pathname === '/lp'
+    || request.nextUrl.pathname.startsWith('/liff/');
   const isApiRoute = request.nextUrl.pathname.startsWith('/api/');
   const isAuthCallback = request.nextUrl.pathname === '/auth/callback';
 
-  if (!user && !isLoginPage && !isApiRoute && !isAuthCallback) {
+  if (!user && !isPublicPage && !isApiRoute && !isAuthCallback) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 
   // ログイン済みでログインページにアクセス → ホームへ
-  if (user && isLoginPage) {
+  if (user && request.nextUrl.pathname === '/login') {
     const url = request.nextUrl.clone();
     url.pathname = '/';
     return NextResponse.redirect(url);

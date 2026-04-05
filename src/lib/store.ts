@@ -10,6 +10,7 @@ import {
 import { learnFromTransaction } from '@/lib/learning';
 
 export interface AppState {
+  companyId: string | null;
   transactions: Transaction[];
   pendingItems: PendingItem[];
   dashboardMetrics: MetricCardProps[];
@@ -47,6 +48,12 @@ export type AppAction =
   | { type: 'LOAD_STATE'; state: AppState }
   | { type: 'RECALCULATE' };
 
+import {
+  saveTransactions, saveCompanyInfo, savePendingReviews,
+  updateTransaction as dbUpdateTx, deleteTransaction as dbDeleteTx,
+  resolvePendingReview as dbResolvePending,
+} from '@/lib/supabase-db';
+
 const STORAGE_KEY = 'ai-tax-app-state';
 
 export function saveToStorage(state: AppState): void {
@@ -67,8 +74,35 @@ export function clearStorage(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+// 認証済みユーザー用（mockなし）
+export function getEmptyState(): AppState {
+  return {
+    companyId: null,
+    transactions: [],
+    pendingItems: [],
+    dashboardMetrics: [
+      { label: '売上', value: '¥0', changeType: 'neutral' },
+      { label: '利益', value: '¥0', changeType: 'neutral' },
+      { label: '手元資金', value: '-', changeType: 'neutral' },
+    ],
+    cashForecast: { monthsRemaining: 0, level: 'safe', message: 'レシートを送って記帳を始めましょう', projectedBalance: 0, fixedCosts: 0 },
+    notices: [{ id: 'n-welcome', message: 'ようこそ！レシートを送信するか、CSVをアップロードして記帳を始めましょう', type: 'info', date: new Date().toISOString().split('T')[0] }],
+    accuracyLogs: [],
+    report: { month: '', createdAt: '', summary: '', pl: { revenue: 0, revenueChange: 0, expenses: 0, expensesChange: 0, profit: 0, profitChange: 0, expenseBreakdown: [] }, bs: { assets: [], liabilities: [], totalAssets: 0, totalLiabilities: 0, netAssets: 0 }, cashflow: { inflow: 0, outflow: 0, net: 0, message: '' }, aiComments: [] },
+    reportList: [],
+    filings: mockFilings,
+    expenseRequests: [],
+    documents: [],
+    companyName: '',
+    ownerName: '',
+    setupCompleted: false,
+    companyInfo: { industry: '建設業', employeeCount: 1, annualRevenue: '', fiscalYearEnd: 3, capitalAmount: 0 },
+  };
+}
+
 export function getInitialState(): AppState {
   return {
+    companyId: null,
     transactions: mockTransactions,
     pendingItems: mockPendingItems,
     dashboardMetrics: mockDashboardMetrics,
@@ -263,11 +297,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (!item) return state;
 
       const choice = item.choices.find(c => c.value === action.choiceValue);
+      const resolvedCategory = choice?.value || item.transaction.category;
+      const resolvedLabel = choice?.label || item.transaction.categoryLabel;
       newState = {
         ...state,
         transactions: state.transactions.map(t =>
           t.id === item.transaction.id
-            ? { ...t, status: 'processed' as const, confidence: 1.0, category: choice?.value || t.category, categoryLabel: choice?.label || t.categoryLabel }
+            ? { ...t, status: 'processed' as const, confidence: 1.0, category: resolvedCategory, categoryLabel: resolvedLabel }
             : t
         ),
         pendingItems: state.pendingItems.filter(p => p.id !== action.id),
@@ -276,12 +312,15 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       learnFromTransaction(
         item.transaction.counterparty,
         item.transaction.description,
-        choice?.value || item.transaction.category,
-        choice?.label || item.transaction.categoryLabel,
+        resolvedCategory,
+        resolvedLabel,
         item.transaction.type
       );
       newState = recalculate(newState);
       saveToStorage(newState);
+      // Supabase: 取引更新 + レビュー解決
+      dbUpdateTx(item.transaction.id, { category: resolvedCategory, categoryLabel: resolvedLabel, status: 'processed', confidence: 1.0 }).catch(() => {});
+      dbResolvePending(action.id, action.choiceValue).catch(() => {});
       return newState;
     }
 
@@ -293,6 +332,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
       newState = recalculate(newState);
       saveToStorage(newState);
+      // Supabase: 新規取引+レビューを保存
+      if (state.companyId) {
+        saveTransactions(state.companyId, action.transactions).catch(() => {});
+        savePendingReviews(state.companyId, action.pending).catch(() => {});
+      }
       return newState;
     }
 
@@ -309,6 +353,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       }
       newState = recalculate(newState);
       saveToStorage(newState);
+      dbUpdateTx(action.id, { ...action.updates, status: 'processed', confidence: 1.0 }).catch(() => {});
       return newState;
     }
 
@@ -320,6 +365,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
       newState = recalculate(newState);
       saveToStorage(newState);
+      dbDeleteTx(action.id).catch(() => {});
       return newState;
     }
 
@@ -385,6 +431,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         setupCompleted: true,
       };
       saveToStorage(newState);
+      if (state.companyId) {
+        saveCompanyInfo(state.companyId, action.companyInfo, action.companyName, action.ownerName).catch(() => {});
+      }
       return newState;
     }
 

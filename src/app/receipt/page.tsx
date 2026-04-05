@@ -42,11 +42,10 @@ export default function ReceiptPage() {
       setStep('processing');
 
       try {
-        // OCR API呼び出し
         const res = await fetch('/api/ocr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: `レシート画像のファイル名: ${file.name}, サイズ: ${file.size}bytes, 種類: ${file.type}` }),
+          body: JSON.stringify({ image: dataUrl }),
         });
 
         if (res.ok) {
@@ -54,36 +53,18 @@ export default function ReceiptPage() {
           setResult(data);
           setEditAmount(data.amount?.toString() || '');
           setEditStore(data.store || '');
-          setEditCategory(data.category || '会議費');
+          setEditCategory(data.categoryLabel || data.category || '会議費');
         } else {
-          // デモ用フォールバック
-          const demo: OcrResult = {
-            amount: 1280,
-            store: 'スターバックス 渋谷店',
-            date: new Date().toISOString().split('T')[0],
-            category: '会議費',
-            categoryLabel: '会議費',
-            confidence: 0.92,
-          };
-          setResult(demo);
-          setEditAmount('1280');
-          setEditStore('スターバックス 渋谷店');
-          setEditCategory('会議費');
+          throw new Error('OCR failed');
         }
       } catch {
-        // デモ用フォールバック
-        const demo: OcrResult = {
-          amount: 1280,
-          store: 'スターバックス 渋谷店',
-          date: new Date().toISOString().split('T')[0],
-          category: '会議費',
-          categoryLabel: '会議費',
-          confidence: 0.92,
-        };
-        setResult(demo);
-        setEditAmount('1280');
-        setEditStore('スターバックス 渋谷店');
-        setEditCategory('会議費');
+        setResult({
+          amount: null, store: null, date: new Date().toISOString().split('T')[0],
+          category: '雑費', categoryLabel: '雑費', confidence: 0,
+        });
+        setEditAmount('');
+        setEditStore('');
+        setEditCategory('雑費');
       }
 
       setStep('confirm');

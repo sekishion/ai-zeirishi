@@ -1,58 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deepseek } from '@/lib/deepseek';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { INDUSTRY_RULES } from '@/lib/grounding';
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: NextRequest) {
   try {
-    const { image } = await req.json(); // base64 image data
+    const { image, industry } = await req.json();
 
-    const response = await deepseek.chat.completions.create({
-      model: 'deepseek-chat',
-      messages: [
-        {
-          role: 'system',
-          content: `あなたはレシート・領収書の読み取りAIです。
-画像の説明テキストから、以下の情報を抽出してJSON形式で返してください。
-
-{
-  "amount": 数値（税込金額）,
-  "store": "店名",
-  "date": "YYYY-MM-DD形式の日付",
-  "category": "勘定科目（会議費/交際費/消耗品費/旅費交通費/通信費/地代家賃/水道光熱費/その他）",
-  "categoryLabel": "カテゴリの日本語ラベル",
-  "items": ["品目1", "品目2"],
-  "confidence": 0.0〜1.0の確信度
-}
-
-情報が読み取れない場合はnullを入れてください。`
-        },
-        {
-          role: 'user',
-          content: `以下のレシート画像の内容を読み取ってください:\n\n${image}`
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 512,
-    });
-
-    const content = response.choices[0]?.message?.content || '{}';
-
-    // JSONを抽出
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return NextResponse.json(parsed);
-      } catch {
-        return NextResponse.json({ error: 'レシートの読み取り結果の解析に失敗しました' }, { status: 400 });
-      }
+    if (!image) {
+      return NextResponse.json({ error: '画像データがありません' }, { status: 400 });
     }
 
-    return NextResponse.json({ error: 'レシートの読み取りに失敗しました' }, { status: 400 });
+    // base64 data URL から raw base64 を抽出
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+    const mimeMatch = image.match(/^data:(image\/\w+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const industryRules = INDUSTRY_RULES[industry || '建設業'] || INDUSTRY_RULES['建設業'];
+
+    const result = await model.generateContent([
+      { inlineData: { mimeType, data: base64Data } },
+      `このレシート・領収書を読み取り、以下の業種ルールに基づいて仕訳分類してください。
+
+## 業種ルール
+${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+## 出力（JSONのみ返すこと）
+{
+  "amount": 税込金額（数値。読めなければnull）,
+  "store": "店名",
+  "date": "YYYY-MM-DD（読めなければnull）",
+  "items": "主な品目（短く）",
+  "category": "勘定科目（上記ルールに従う）",
+  "categoryLabel": "表示名",
+  "confidence": 0.0〜1.0
+}`,
+    ]);
+
+    const text = result.response.text();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return NextResponse.json(parsed);
+    }
+
+    return NextResponse.json({ error: '読み取りに失敗しました' }, { status: 400 });
   } catch (error) {
-    console.error('OCR error:', error);
-    return NextResponse.json(
-      { error: 'レシートの読み取りに失敗しました。もう一度お試しください。' },
-      { status: 500 }
-    );
+    console.error('[OCR API] Error:', error);
+    return NextResponse.json({ error: 'レシートの読み取りに失敗しました' }, { status: 500 });
   }
 }

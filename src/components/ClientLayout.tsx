@@ -9,6 +9,13 @@ import { BottomNavConnected } from '@/components/shared/BottomNavConnected';
 
 const NO_NAV_PAGES = ['/line', '/onboarding', '/login'];
 
+// これらのページはAppProvider不要（認証・状態管理をバイパス）
+function isPublicPage(pathname: string): boolean {
+  return pathname === '/lp'
+    || pathname === '/login'
+    || pathname.startsWith('/liff/');
+}
+
 function LayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -37,6 +44,13 @@ function LayoutInner({ children }: { children: React.ReactNode }) {
 }
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  // 公開ページはAppProvider（認証・状態管理）をスキップして直接レンダリング
+  if (isPublicPage(pathname)) {
+    return <>{children}</>;
+  }
+
   return (
     <AppProvider>
       <LayoutInner>{children}</LayoutInner>

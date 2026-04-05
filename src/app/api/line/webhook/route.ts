@@ -68,7 +68,7 @@ async function getAIResponse(userMessage: string): Promise<string> {
 // レシートOCR処理（Gemini Flash）
 async function processReceipt(imageBuffer: Buffer): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const result = await model.generateContent([
       {

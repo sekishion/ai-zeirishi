@@ -99,10 +99,14 @@ export async function POST(req: NextRequest) {
     const body = await req.text();
     const signature = req.headers.get('x-line-signature') || '';
 
+    console.log(`[LINE Webhook] Body length: ${body.length}, Signature: ${signature ? 'present' : 'missing'}`);
+
     // 署名検証
     if (!validateSignature(body, signature)) {
       console.error('[LINE Webhook] Invalid signature');
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+      console.error('[LINE Webhook] Expected:', crypto.createHmac('SHA256', CHANNEL_SECRET).update(body).digest('base64'));
+      console.error('[LINE Webhook] Got:', signature);
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     const payload = JSON.parse(body);
@@ -154,9 +158,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, ts: Date.now() });
   } catch (error) {
     console.error('[LINE Webhook] Fatal error:', error);
-    return NextResponse.json({ ok: true }); // LINEに200を返さないとリトライが来る
+    return NextResponse.json({ ok: true, ts: Date.now() }); // LINEに200を返さないとリトライが来る
   }
 }

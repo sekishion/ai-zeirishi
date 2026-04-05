@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as crypto from 'crypto';
 import { deepseek, SYSTEM_PROMPT } from '@/lib/deepseek';
 
+// Vercelサーバーレス関数のタイムアウトを延長（最大60秒）
+export const maxDuration = 60;
+
 const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET!;
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN!;
 
@@ -92,41 +95,68 @@ async function processReceipt(imageBuffer: Buffer): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.text();
-  const signature = req.headers.get('x-line-signature') || '';
+  try {
+    const body = await req.text();
+    const signature = req.headers.get('x-line-signature') || '';
 
-  // 署名検証
-  if (!validateSignature(body, signature)) {
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
-  }
-
-  const payload = JSON.parse(body);
-  const events = payload.events || [];
-
-  for (const event of events) {
-    if (event.type !== 'message') continue;
-    const replyToken = event.replyToken;
-
-    if (event.message.type === 'text') {
-      // テキストメッセージ → AIチャット応答
-      const userText = event.message.text;
-      const aiReply = await getAIResponse(userText);
-      await replyMessage(replyToken, [{ type: 'text', text: aiReply }]);
-
-    } else if (event.message.type === 'image') {
-      // 画像メッセージ → レシートOCR
-      const imageBuffer = await getImageContent(event.message.id);
-      const ocrResult = await processReceipt(imageBuffer);
-      await replyMessage(replyToken, [{ type: 'text', text: ocrResult }]);
-
-    } else {
-      // その他のメッセージ
-      await replyMessage(replyToken, [{
-        type: 'text',
-        text: '📊 AI経理部長です！\n\nテキストで質問するか、レシートの写真を送ってください。\n\n💬 質問例:\n・今月の経費はいくら？\n・交際費の上限は？\n・確定申告はいつ？',
-      }]);
+    // 署名検証
+    if (!validateSignature(body, signature)) {
+      console.error('[LINE Webhook] Invalid signature');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
     }
-  }
 
-  return NextResponse.json({ ok: true });
+    const payload = JSON.parse(body);
+    const events = payload.events || [];
+
+    console.log(`[LINE Webhook] Received ${events.length} events`);
+
+    for (const event of events) {
+      if (event.type !== 'message') {
+        console.log(`[LINE Webhook] Skipping event type: ${event.type}`);
+        continue;
+      }
+
+      const replyToken = event.replyToken;
+      console.log(`[LINE Webhook] Processing ${event.message.type} message`);
+
+      try {
+        if (event.message.type === 'text') {
+          const userText = event.message.text;
+          console.log(`[LINE Webhook] User text: ${userText.substring(0, 50)}`);
+          const aiReply = await getAIResponse(userText);
+          console.log(`[LINE Webhook] AI reply length: ${aiReply.length}`);
+          await replyMessage(replyToken, [{ type: 'text', text: aiReply }]);
+          console.log('[LINE Webhook] Reply sent successfully');
+
+        } else if (event.message.type === 'image') {
+          console.log('[LINE Webhook] Fetching image...');
+          const imageBuffer = await getImageContent(event.message.id);
+          console.log(`[LINE Webhook] Image size: ${imageBuffer.length} bytes`);
+          const ocrResult = await processReceipt(imageBuffer);
+          await replyMessage(replyToken, [{ type: 'text', text: ocrResult }]);
+          console.log('[LINE Webhook] OCR reply sent');
+
+        } else {
+          await replyMessage(replyToken, [{
+            type: 'text',
+            text: '📊 AI経理部長です！\n\nテキストで質問するか、レシートの写真を送ってください。\n\n💬 質問例:\n・今月の経費はいくら？\n・交際費の上限は？\n・確定申告はいつ？',
+          }]);
+        }
+      } catch (eventError) {
+        console.error(`[LINE Webhook] Error processing event:`, eventError);
+        // 個別イベントのエラーでも他のイベントは処理続行
+        try {
+          await replyMessage(replyToken, [{
+            type: 'text',
+            text: '申し訳ありません、処理中にエラーが発生しました。もう一度お試しください。',
+          }]);
+        } catch { /* reply失敗は無視 */ }
+      }
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('[LINE Webhook] Fatal error:', error);
+    return NextResponse.json({ ok: true }); // LINEに200を返さないとリトライが来る
+  }
 }

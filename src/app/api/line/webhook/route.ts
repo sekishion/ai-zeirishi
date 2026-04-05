@@ -19,7 +19,7 @@ function validateSignature(body: string, signature: string): boolean {
 
 // LINEにメッセージを返信
 async function replyMessage(replyToken: string, messages: { type: string; text: string }[]) {
-  await fetch('https://api.line.me/v2/bot/message/reply', {
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -27,6 +27,11 @@ async function replyMessage(replyToken: string, messages: { type: string; text: 
     },
     body: JSON.stringify({ replyToken, messages }),
   });
+  const resBody = await res.text();
+  console.log(`[LINE Reply] Status: ${res.status}, Body: ${resBody}`);
+  if (!res.ok) {
+    console.error(`[LINE Reply] FAILED: ${res.status} ${resBody}`);
+  }
 }
 
 // LINE画像取得

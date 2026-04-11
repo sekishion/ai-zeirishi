@@ -2,8 +2,18 @@
 
 import { useApp } from '@/lib/store';
 import { useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+
+interface CompanyForm {
+  name: string;
+  representative_name: string;
+  postal_code: string;
+  address: string;
+  phone: string;
+  invoice_registration_number: string;
+  bank_account: string;
+}
 
 export default function SettingsPage() {
   const { state, dispatch } = useApp();
@@ -12,6 +22,68 @@ export default function SettingsPage() {
   const freeeError = searchParams.get('freee_error');
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ synced: number; total: number } | null>(null);
+
+  // 会社情報フォーム（請求書発行元情報）
+  const [companyForm, setCompanyForm] = useState<CompanyForm>({
+    name: '',
+    representative_name: '',
+    postal_code: '',
+    address: '',
+    phone: '',
+    invoice_registration_number: '',
+    bank_account: '',
+  });
+  const [companyLoaded, setCompanyLoaded] = useState(false);
+  const [companySaving, setCompanySaving] = useState(false);
+  const [companySaved, setCompanySaved] = useState(false);
+  const [companyExpanded, setCompanyExpanded] = useState(true);
+
+  // 初期ロード
+  useEffect(() => {
+    fetch('/api/settings/company')
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && data.company) {
+          setCompanyForm({
+            name: data.company.name || '',
+            representative_name: data.company.representative_name || '',
+            postal_code: data.company.postal_code || '',
+            address: data.company.address || '',
+            phone: data.company.phone || '',
+            invoice_registration_number: data.company.invoice_registration_number || '',
+            bank_account: data.company.bank_account || '',
+          });
+        }
+        setCompanyLoaded(true);
+      })
+      .catch(() => setCompanyLoaded(true));
+  }, []);
+
+  const handleCompanySave = async () => {
+    setCompanySaving(true);
+    setCompanySaved(false);
+    try {
+      const res = await fetch('/api/settings/company', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(companyForm),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setCompanySaved(true);
+        setTimeout(() => setCompanySaved(false), 3000);
+      } else {
+        alert(data.error || '保存に失敗しました');
+      }
+    } catch {
+      alert('保存に失敗しました');
+    } finally {
+      setCompanySaving(false);
+    }
+  };
+
+  const validateRegNumber = (s: string) => !s || /^T\d{13}$/.test(s);
+  const regNumberOk = validateRegNumber(companyForm.invoice_registration_number);
 
   const handleFreeeConnect = () => {
     if (!state.companyId) {
@@ -60,18 +132,131 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Account */}
-      <p className="text-[11px] font-bold text-gray-400 tracking-wider">アカウント</p>
+      {/* 会社情報（請求書発行元） */}
+      <p className="text-[11px] font-bold text-gray-400 tracking-wider">会社情報（請求書発行元）</p>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex items-center gap-3 p-4">
+        <button
+          onClick={() => setCompanyExpanded(!companyExpanded)}
+          className="w-full flex items-center gap-3 p-4 text-left"
+        >
           <div className="w-10 h-10 bg-[#1A3A5C] rounded-full text-white flex items-center justify-center font-bold text-[14px]">
-            {state.ownerName?.[0] || '田'}
+            {companyForm.name?.[0] || '?'}
           </div>
           <div className="flex-1">
-            <p className="text-[14px] font-bold text-gray-800">{state.companyName || '田中建設 株式会社'}</p>
-            <p className="text-[12px] text-gray-400">{state.ownerName || '田中太郎'} ・ スタンダードプラン</p>
+            <p className="text-[14px] font-bold text-gray-800">{companyForm.name || '（未設定）'}</p>
+            <p className="text-[12px] text-gray-400">
+              {companyForm.invoice_registration_number
+                ? <span className="text-emerald-600">登録番号: {companyForm.invoice_registration_number}</span>
+                : <span className="text-amber-600">⚠️ インボイス登録番号 未設定</span>}
+            </p>
           </div>
-        </div>
+          <span className="text-gray-400">{companyExpanded ? '▼' : '▶'}</span>
+        </button>
+
+        {companyExpanded && companyLoaded && (
+          <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-[11px] text-blue-800 leading-relaxed">
+                ここに登録した情報は<b>請求書の発行元</b>として自動で表示されます。<br/>
+                インボイス登録番号は <b>T+13桁</b> の数字。
+                <a href="https://www.invoice-kohyo.nta.go.jp/" target="_blank" rel="noopener" className="underline">国税庁の確認ページ</a>
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 block mb-1">会社名 *</label>
+              <input
+                type="text"
+                value={companyForm.name}
+                onChange={e => setCompanyForm({ ...companyForm, name: e.target.value })}
+                placeholder="例: 田中建設 株式会社"
+                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-[14px] focus:border-[#06C755] focus:ring-1 focus:ring-[#06C755] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 block mb-1">代表者名</label>
+              <input
+                type="text"
+                value={companyForm.representative_name}
+                onChange={e => setCompanyForm({ ...companyForm, representative_name: e.target.value })}
+                placeholder="例: 田中太郎"
+                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-[14px] focus:border-[#06C755] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 block mb-1">郵便番号</label>
+              <input
+                type="text"
+                value={companyForm.postal_code}
+                onChange={e => setCompanyForm({ ...companyForm, postal_code: e.target.value })}
+                placeholder="例: 150-0002"
+                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-[14px] focus:border-[#06C755] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 block mb-1">住所 *</label>
+              <input
+                type="text"
+                value={companyForm.address}
+                onChange={e => setCompanyForm({ ...companyForm, address: e.target.value })}
+                placeholder="例: 東京都渋谷区渋谷1-2-3"
+                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-[14px] focus:border-[#06C755] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 block mb-1">電話番号</label>
+              <input
+                type="tel"
+                value={companyForm.phone}
+                onChange={e => setCompanyForm({ ...companyForm, phone: e.target.value })}
+                placeholder="例: 03-1234-5678"
+                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-[14px] focus:border-[#06C755] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 block mb-1">
+                インボイス登録番号 *
+                <span className="text-[10px] text-gray-400 ml-1">適格請求書の必須項目</span>
+              </label>
+              <input
+                type="text"
+                value={companyForm.invoice_registration_number}
+                onChange={e => setCompanyForm({ ...companyForm, invoice_registration_number: e.target.value })}
+                placeholder="T1234567890123"
+                className={`w-full border rounded-xl px-4 py-2.5 text-[14px] font-mono focus:ring-1 outline-none ${
+                  regNumberOk ? 'border-gray-300 focus:border-[#06C755]' : 'border-red-300 focus:border-red-500'
+                }`}
+              />
+              {!regNumberOk && (
+                <p className="text-[10px] text-red-500 mt-0.5">T+13桁の数字を入力してください（例: T1234567890123）</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-gray-500 block mb-1">振込先口座</label>
+              <textarea
+                value={companyForm.bank_account}
+                onChange={e => setCompanyForm({ ...companyForm, bank_account: e.target.value })}
+                placeholder="例: みずほ銀行 渋谷支店&#10;普通 1234567&#10;タナカケンセツ（カ）"
+                rows={3}
+                className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-[14px] focus:border-[#06C755] outline-none resize-none"
+              />
+            </div>
+
+            <button
+              onClick={handleCompanySave}
+              disabled={companySaving || !companyForm.name || !companyForm.address || !regNumberOk}
+              className="w-full bg-[#06C755] text-white font-bold py-3 rounded-xl text-[14px] disabled:opacity-40"
+            >
+              {companySaving ? '保存中...' : companySaved ? '✓ 保存しました' : '会社情報を保存'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 会計ソフト連携 */}

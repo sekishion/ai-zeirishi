@@ -288,18 +288,122 @@ export async function getTransactionCounterparty(txId: string): Promise<string |
  * 会社情報を取得（節税アドバイス・財務諸表生成で使用）。
  */
 export async function getCompanyInfo(companyId: string): Promise<{
+  name: string | null;
   industry: string | null;
   capital_amount: number | null;
   employee_count: number | null;
   fiscal_year_end_month: number | null;
   owner_name: string | null;
+  representative_name?: string | null;
+  address?: string | null;
+  postal_code?: string | null;
+  phone?: string | null;
+  invoice_registration_number?: string | null;
+  bank_account?: string | null;
 } | null> {
   const { data } = await supabase
     .from('companies')
-    .select('industry, capital_amount, employee_count, fiscal_year_end_month, owner_name')
+    .select('name, industry, capital_amount, employee_count, fiscal_year_end_month, owner_name, representative_name, address, postal_code, phone, invoice_registration_number, bank_account')
     .eq('id', companyId)
     .single();
   return data || null;
+}
+
+/**
+ * 会社情報を更新（settings画面から）。
+ */
+export async function updateCompanyInfo(
+  companyId: string,
+  updates: {
+    name?: string;
+    representative_name?: string;
+    address?: string;
+    postal_code?: string;
+    phone?: string;
+    invoice_registration_number?: string;
+    bank_account?: string;
+    industry?: string;
+    capital_amount?: number;
+    employee_count?: number;
+    fiscal_year_end_month?: number;
+  }
+): Promise<void> {
+  const { error } = await supabase
+    .from('companies')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', companyId);
+  if (error) {
+    console.error('[LINE DB] updateCompanyInfo failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * 取引先マスタから取得 or 作成（請求書作成時に呼ぶ）。
+ */
+export async function upsertPartner(
+  companyId: string,
+  name: string,
+  details: {
+    address?: string;
+    postal_code?: string;
+    phone?: string;
+    invoice_registration_number?: string;
+    is_individual?: boolean;
+  } = {}
+): Promise<string> {
+  const { data: existing } = await supabase
+    .from('partners')
+    .select('id, use_count')
+    .eq('company_id', companyId)
+    .eq('name', name)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase
+      .from('partners')
+      .update({
+        ...details,
+        use_count: existing.use_count + 1,
+        last_used: jstToday(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id);
+    return existing.id;
+  }
+
+  const { data, error } = await supabase
+    .from('partners')
+    .insert({
+      company_id: companyId,
+      name,
+      ...details,
+      use_count: 1,
+      last_used: jstToday(),
+    })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data!.id;
+}
+
+/**
+ * 取引先候補を取得（最近使った順）。
+ */
+export async function getRecentPartners(companyId: string, limit = 10): Promise<Array<{
+  id: string;
+  name: string;
+  address: string;
+  postal_code: string;
+  invoice_registration_number: string;
+}>> {
+  const { data } = await supabase
+    .from('partners')
+    .select('id, name, address, postal_code, invoice_registration_number')
+    .eq('company_id', companyId)
+    .order('last_used', { ascending: false })
+    .limit(limit);
+  return data || [];
 }
 
 /**

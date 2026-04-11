@@ -9,6 +9,7 @@ interface InvoiceItem {
   quantity: number;
   unitPrice: string;
   taxRate: 10 | 8;
+  priceMode: 'tax_excluded' | 'tax_included';  // 税抜入力 or 税込入力
 }
 
 const BANK_STORAGE_KEY = 'ai-keiri-bank-info';
@@ -33,6 +34,16 @@ function displayDate(dateStr: string): string {
   return `${y}年${parseInt(m)}月${parseInt(d)}日`;
 }
 
+interface CompanyInfo {
+  name: string;
+  representative_name: string;
+  postal_code: string;
+  address: string;
+  phone: string;
+  invoice_registration_number: string;
+  bank_account: string;
+}
+
 function InvoiceForm() {
   const searchParams = useSearchParams();
   // 旧 ?uid= 生渡しを廃止。?t=<HMAC token> を使用
@@ -40,9 +51,19 @@ function InvoiceForm() {
 
   const today = formatDate(new Date());
 
+  // 取引先（請求先）情報
   const [client, setClient] = useState('');
+  const [clientPostalCode, setClientPostalCode] = useState('');
+  const [clientAddress, setClientAddress] = useState('');
+  const [clientRegistrationNumber, setClientRegistrationNumber] = useState('');
+  const [showClientDetails, setShowClientDetails] = useState(false);
+
+  // 自社（発行元）情報 - 設定から自動取得
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+  const [companyMissing, setCompanyMissing] = useState<string[]>([]);
+
   const [issueDate, setIssueDate] = useState(today);
-  const [items, setItems] = useState<InvoiceItem[]>([{ name: '', quantity: 1, unitPrice: '', taxRate: 10 }]);
+  const [items, setItems] = useState<InvoiceItem[]>([{ name: '', quantity: 1, unitPrice: '', taxRate: 10, priceMode: 'tax_excluded' }]);
   const [dueDate, setDueDate] = useState(formatDate(endOfMonth(addMonths(new Date(), 1))));
   const [dueDateMode, setDueDateMode] = useState<'preset' | 'custom'>('preset');
   const [selectedPreset, setSelectedPreset] = useState(1);
@@ -52,13 +73,33 @@ function InvoiceForm() {
   const [done, setDone] = useState(false);
   const [result, setResult] = useState<{ total: number; invoiceNo: string } | null>(null);
 
-  // 振込先をlocalStorageから復元
+  // 自社情報を取得
   useEffect(() => {
+    if (!token) return;
+    fetch(`/api/liff/company?t=${encodeURIComponent(token)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok && data.company) {
+          setCompanyInfo(data.company);
+          // 銀行口座情報を自動セット
+          if (data.company.bank_account) setBankInfo(data.company.bank_account);
+          // 必須項目のチェック
+          const missing: string[] = [];
+          if (!data.company.name) missing.push('会社名');
+          if (!data.company.address) missing.push('住所');
+          if (!data.company.invoice_registration_number) missing.push('インボイス登録番号');
+          setCompanyMissing(missing);
+        }
+      })
+      .catch(() => { /* 取得失敗時はlocalStorageへフォールバック */ });
+
+    // 振込先のlocalStorageフォールバック（自社設定が無い場合）
     try {
       const saved = localStorage.getItem(BANK_STORAGE_KEY);
-      if (saved) setBankInfo(saved);
+      if (saved && !bankInfo) setBankInfo(saved);
     } catch { /* ignore */ }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   const selectPreset = (months: number) => {
     setSelectedPreset(months);
@@ -71,7 +112,7 @@ function InvoiceForm() {
     setSelectedPreset(0);
   };
 
-  const addItem = () => setItems([...items, { name: '', quantity: 1, unitPrice: '', taxRate: 10 }]);
+  const addItem = () => setItems([...items, { name: '', quantity: 1, unitPrice: '', taxRate: 10, priceMode: 'tax_excluded' }]);
 
   const removeItem = (i: number) => {
     if (items.length <= 1) return;
@@ -82,17 +123,35 @@ function InvoiceForm() {
     setItems(items.map((item, idx) => idx === i ? { ...item, [field]: value } : item));
   };
 
-  // 税率ごとに計算
+  // 税率ごとに計算（税抜入力 / 税込入力 両対応）
   const calc = (() => {
     let subtotal10 = 0, subtotal8 = 0;
+    let tax10 = 0, tax8 = 0;
     for (const item of items) {
       const price = parseInt(String(item.unitPrice).replace(/[,，]/g, ''), 10) || 0;
       const lineTotal = price * item.quantity;
-      if (item.taxRate === 8) subtotal8 += lineTotal;
-      else subtotal10 += lineTotal;
+      if (item.priceMode === 'tax_included') {
+        // 税込入力: 内税計算で税抜きを逆算
+        if (item.taxRate === 8) {
+          const ex = Math.floor(lineTotal / 1.08);
+          subtotal8 += ex;
+          tax8 += lineTotal - ex;
+        } else {
+          const ex = Math.floor(lineTotal / 1.1);
+          subtotal10 += ex;
+          tax10 += lineTotal - ex;
+        }
+      } else {
+        // 税抜入力: 外税で消費税を計算
+        if (item.taxRate === 8) {
+          subtotal8 += lineTotal;
+          tax8 += Math.floor(lineTotal * 0.08);
+        } else {
+          subtotal10 += lineTotal;
+          tax10 += Math.floor(lineTotal * 0.1);
+        }
+      }
     }
-    const tax10 = Math.floor(subtotal10 * 0.1);
-    const tax8 = Math.floor(subtotal8 * 0.08);
     return {
       subtotal: subtotal10 + subtotal8,
       subtotal10, subtotal8,
@@ -119,6 +178,9 @@ function InvoiceForm() {
         body: JSON.stringify({
           token,
           client: client.trim(),
+          clientPostalCode: clientPostalCode.trim(),
+          clientAddress: clientAddress.trim(),
+          clientRegistrationNumber: clientRegistrationNumber.trim(),
           issueDate,
           dueDate,
           items: items.filter(i => i.name && i.unitPrice).map(i => ({
@@ -126,9 +188,14 @@ function InvoiceForm() {
             quantity: i.quantity,
             unitPrice: parseInt(String(i.unitPrice).replace(/[,，]/g, ''), 10),
             taxRate: i.taxRate,
+            priceMode: i.priceMode,
           })),
           subtotal: calc.subtotal,
+          subtotal10: calc.subtotal10,
+          subtotal8: calc.subtotal8,
           tax: calc.tax,
+          tax10: calc.tax10,
+          tax8: calc.tax8,
           total: calc.total,
           bankInfo: bankInfo.trim(),
           memo: memo.trim(),
@@ -156,13 +223,25 @@ function InvoiceForm() {
         token,
         invoiceNo: result?.invoiceNo,
         client,
+        clientPostalCode,
+        clientAddress,
+        clientRegistrationNumber,
         items: items.filter(i => i.name && i.unitPrice).map(i => ({
-          name: i.name, quantity: i.quantity,
+          name: i.name,
+          quantity: i.quantity,
           unitPrice: parseInt(String(i.unitPrice).replace(/[,，]/g, ''), 10),
+          taxRate: i.taxRate,
+          priceMode: i.priceMode,
         })),
-        subtotal: calc.subtotal, tax: calc.tax, total: calc.total,
+        subtotal: calc.subtotal,
+        subtotal10: calc.subtotal10,
+        subtotal8: calc.subtotal8,
+        tax: calc.tax,
+        tax10: calc.tax10,
+        tax8: calc.tax8,
+        total: calc.total,
         issueDate, dueDate, bankInfo,
-        companyName: '',
+        memo,
       }),
     });
     const html = await res.text();
@@ -204,16 +283,89 @@ function InvoiceForm() {
       </div>
 
       <div className="px-4 py-4 space-y-5 pb-32">
+        {/* 適格請求書ガイダンス */}
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+          <p className="text-[12px] font-bold text-emerald-800 mb-1.5">📋 適格請求書（インボイス）対応</p>
+          <p className="text-[11px] text-emerald-700 leading-relaxed">
+            この請求書は2023年10月開始のインボイス制度に対応した形式で発行されます。<br/>
+            • 軽減税率8%対象は<b>※マーク</b>と税率内訳が自動で出力されます<br/>
+            • 自社のインボイス登録番号は<b>設定画面</b>から登録してください
+          </p>
+        </div>
+
+        {/* 自社情報の不足警告 */}
+        {companyMissing.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <p className="text-[12px] font-bold text-amber-800 mb-1">⚠️ 自社情報が未設定</p>
+            <p className="text-[11px] text-amber-700">
+              {companyMissing.join('・')}が未設定です。発行前に <a href="/settings" className="underline font-bold">設定画面</a> で登録してください。<br/>
+              特に<b>インボイス登録番号</b>は適格請求書の必須項目です。
+            </p>
+          </div>
+        )}
+
+        {companyInfo && companyMissing.length === 0 && (
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+            <p className="text-[10px] text-gray-500 mb-1">発行者（自社）</p>
+            <p className="text-[13px] font-bold text-gray-800">{companyInfo.name}</p>
+            <p className="text-[11px] text-gray-600">{companyInfo.address}</p>
+            <p className="text-[11px] text-emerald-700 font-mono mt-0.5">登録番号: {companyInfo.invoice_registration_number}</p>
+          </div>
+        )}
+
         {/* 取引先 */}
         <div>
-          <label className="text-[12px] font-bold text-gray-500 block mb-1.5">取引先 *</label>
+          <label className="text-[12px] font-bold text-gray-500 block mb-1.5">取引先（請求先）*</label>
           <input
             type="text"
             value={client}
             onChange={e => setClient(e.target.value)}
-            placeholder="例: ABC建設株式会社"
+            placeholder="例: ABC建設株式会社 御中"
             className="w-full border border-gray-300 rounded-xl px-4 py-3 text-[16px] focus:border-[#06C755] focus:ring-1 focus:ring-[#06C755] outline-none"
           />
+
+          <button
+            type="button"
+            onClick={() => setShowClientDetails(!showClientDetails)}
+            className="text-[11px] text-[#06C755] font-bold mt-2 underline"
+          >
+            {showClientDetails ? '▼ 取引先の詳細を隠す' : '▶ 取引先の住所・登録番号を入力（任意）'}
+          </button>
+
+          {showClientDetails && (
+            <div className="mt-2 space-y-2 bg-gray-50 rounded-xl p-3">
+              <div>
+                <span className="text-[10px] text-gray-500">郵便番号</span>
+                <input
+                  type="text"
+                  value={clientPostalCode}
+                  onChange={e => setClientPostalCode(e.target.value)}
+                  placeholder="例: 150-0002"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[14px] focus:border-[#06C755] outline-none"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-gray-500">住所</span>
+                <input
+                  type="text"
+                  value={clientAddress}
+                  onChange={e => setClientAddress(e.target.value)}
+                  placeholder="例: 東京都渋谷区渋谷1-2-3"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[14px] focus:border-[#06C755] outline-none"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-gray-500">取引先のインボイス登録番号</span>
+                <input
+                  type="text"
+                  value={clientRegistrationNumber}
+                  onChange={e => setClientRegistrationNumber(e.target.value)}
+                  placeholder="T1234567890123（任意）"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-[14px] font-mono focus:border-[#06C755] outline-none"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 発行日 */}
@@ -256,7 +408,18 @@ function InvoiceForm() {
                   />
                 </div>
                 <div className="flex-[2]">
-                  <span className="text-[10px] text-gray-400">単価（税抜）</span>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[10px] text-gray-400">
+                      単価（{item.priceMode === 'tax_included' ? '税込' : '税抜'}）
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => updateItem(i, 'priceMode', item.priceMode === 'tax_included' ? 'tax_excluded' : 'tax_included')}
+                      className="text-[10px] text-[#06C755] font-bold underline"
+                    >
+                      {item.priceMode === 'tax_included' ? '→税抜' : '→税込'}
+                    </button>
+                  </div>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -275,16 +438,24 @@ function InvoiceForm() {
                     >10%</button>
                     <button
                       onClick={() => updateItem(i, 'taxRate', 8)}
-                      className={`flex-1 py-2 text-[12px] font-bold ${item.taxRate === 8 ? 'bg-[#06C755] text-white' : 'text-gray-500'}`}
-                    >8%</button>
+                      className={`flex-1 py-2 text-[12px] font-bold ${item.taxRate === 8 ? 'bg-amber-500 text-white' : 'text-gray-500'}`}
+                    >8%※</button>
                   </div>
                 </div>
               </div>
+              {item.taxRate === 8 && (
+                <p className="text-[10px] text-amber-700 mt-1">※ 軽減税率対象品目（飲食料品・新聞）</p>
+              )}
               {(() => {
                 const price = parseInt(String(item.unitPrice).replace(/[,，]/g, ''), 10) || 0;
                 const lineTotal = price * item.quantity;
                 return lineTotal > 0 ? (
-                  <p className="text-right text-[13px] text-gray-500 mt-1.5">小計: ¥{lineTotal.toLocaleString()}</p>
+                  <p className="text-right text-[13px] text-gray-500 mt-1.5">
+                    小計: ¥{lineTotal.toLocaleString()}
+                    <span className="text-[10px] text-gray-400 ml-1">
+                      ({item.priceMode === 'tax_included' ? '税込' : '税抜'})
+                    </span>
+                  </p>
                 ) : null;
               })()}
             </div>

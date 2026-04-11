@@ -1,9 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TOKEN = 'gYbd2de6jdYB6FhHVkML3kivbYXxIJX0K0iEoKUEJ5ksY6jme14TUQ63SqMHbdW04LHmWqle/YOM8GTYYmU420jgomFA61sPL6jNWFxWu4K94AqhohAAUIMsSur654EVvERrjDoceMt207JsphgglQdB04t89/1O/w1cDnyilFU=';
+dotenv.config({ path: path.join(__dirname, '.env.local') });
+const TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+if (!TOKEN) {
+  console.error('❌ LINE_CHANNEL_ACCESS_TOKEN not found in .env.local');
+  process.exit(1);
+}
 
 async function main() {
   // Step 1: 既存リッチメニュー一覧を取得
@@ -23,13 +29,14 @@ async function main() {
     chatBarText: 'メニュー',
     areas: [
       // Row 1
-      { bounds: { x: 0, y: 0, width: 833, height: 843 }, action: { type: 'message', text: 'レシート' } },
+      // 「レシート」ボタン: 押した瞬間にカメラロール（写真選択画面）を開く
+      { bounds: { x: 0, y: 0, width: 833, height: 843 }, action: { type: 'cameraRoll', label: 'レシート' } },
       { bounds: { x: 833, y: 0, width: 834, height: 843 }, action: { type: 'message', text: '請求書を作りたい' } },
       { bounds: { x: 1667, y: 0, width: 833, height: 843 }, action: { type: 'message', text: '入金を記録したい' } },
       // Row 2
-      { bounds: { x: 0, y: 843, width: 833, height: 843 }, action: { type: 'message', text: '今月のまとめ' } },
-      { bounds: { x: 833, y: 843, width: 834, height: 843 }, action: { type: 'message', text: '仕訳履歴' } },
-      { bounds: { x: 1667, y: 843, width: 833, height: 843 }, action: { type: 'message', text: '経理に質問したい' } },
+      { bounds: { x: 0, y: 843, width: 833, height: 843 }, action: { type: 'message', text: '今月のまとめを見せて' } },
+      { bounds: { x: 833, y: 843, width: 834, height: 843 }, action: { type: 'message', text: '仕訳履歴を見せて' } },
+      { bounds: { x: 1667, y: 843, width: 833, height: 843 }, action: { type: 'message', text: '経理について質問があります' } },
     ],
   };
 

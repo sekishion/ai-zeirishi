@@ -172,7 +172,7 @@ async function handleIndustrySelection(replyToken: string, lineUserId: string, i
 
   await replyMessage(replyToken, [
     textMessage(
-      `${industry}ですね！\n${industry}の仕訳ルールで記帳します。${noteForOther}\n\n使い方はかんたん:\n📸 レシートを撮って送る → 自動で記帳\n💬 質問をテキストで送る → AIが回答\n📋 リッチメニューから請求書・入金記録もできます\n\nさっそくレシートを送ってみてください！`,
+      `${industry}ですね！\n${industry}の仕訳ルールで記帳します。${noteForOther}\n\n使い方はかんたん:\n📸 レシートを撮って送る → 自動で記帳\n💬 質問をテキストで送る → AIが回答\n📋 リッチメニューから請求書・入金記録もできます\n\n💡 ヒント: レシートは**まとめて複数枚**送れます！スマホのアルバムで複数選んで送信してください 📸📸📸\n\nさっそくレシートを送ってみてください！`,
     ),
   ]);
 }
@@ -529,12 +529,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
+    type LineEvent = {
+      type: string;
+      replyToken: string;
+      source?: { userId?: string };
+      message?: { type: string; id: string; text?: string };
+    };
     const payload = JSON.parse(body);
-    const events = payload.events || [];
+    const events: LineEvent[] = payload.events || [];
 
-    for (const event of events) {
+    // 並列処理: 複数画像の同時送信に対応（forループ直列だと10秒制限を超える）
+    await Promise.all(events.map(async (event) => {
       const lineUserId = event.source?.userId;
-      if (!lineUserId) continue;
+      if (!lineUserId) return;
 
       const replyToken = event.replyToken;
 
@@ -542,10 +549,10 @@ export async function POST(req: NextRequest) {
         // --- follow イベント ---
         if (event.type === 'follow') {
           await handleFollow(replyToken, lineUserId);
-          continue;
+          return;
         }
 
-        if (event.type !== 'message') continue;
+        if (event.type !== 'message') return;
 
         // ユーザーを取得（未登録なら自動登録）
         let user = await getLineUser(lineUserId);
@@ -553,6 +560,8 @@ export async function POST(req: NextRequest) {
           const profile = await getLineProfile(lineUserId);
           user = await createLineUser(lineUserId, profile.displayName);
         }
+
+        if (!event.message) return;
 
         // --- 画像メッセージ（レシート） ---
         if (event.message.type === 'image') {
@@ -569,14 +578,14 @@ export async function POST(req: NextRequest) {
                 { label: '📦 その他', text: 'その他' },
               ]),
             ]);
-            continue;
+            return;
           }
           await handleReceiptImage(replyToken, user, event.message.id);
-          continue;
+          return;
         }
 
         // --- テキストメッセージ ---
-        if (event.message.type === 'text') {
+        if (event.message.type === 'text' && event.message.text) {
           const text = event.message.text.trim();
 
           // オンボーディング: 業種選択
@@ -584,7 +593,7 @@ export async function POST(req: NextRequest) {
             const validIndustries = Object.keys(INDUSTRY_RULES);
             if (validIndustries.includes(text)) {
               await handleIndustrySelection(replyToken, lineUserId, text);
-              continue;
+              return;
             }
           }
 
@@ -593,14 +602,14 @@ export async function POST(req: NextRequest) {
             await replyMessage(replyToken, [
               textMessage('📸 レシートや領収書の写真を送ってください！\n\nスマホのカメラで撮影して、そのまま送信するだけでOKです。'),
             ]);
-            continue;
+            return;
           }
 
           // リッチメニュー: 今月のまとめ → Flex Message
           if (text === '今月のまとめを見せて') {
             if (!user.company_id) {
               await replyMessage(replyToken, [textMessage('まだデータがありません。レシートを送ってみてください 📸')]);
-              continue;
+              return;
             }
             const summary = await getMonthlyExpenseSummary(user.company_id);
             const now = new Date();
@@ -609,7 +618,7 @@ export async function POST(req: NextRequest) {
 
             if (summary.transactionCount === 0) {
               await replyMessage(replyToken, [textMessage(`📊 ${monthLabel}はまだデータがありません。\nレシートを送って記帳を始めましょう 📸`)]);
-              continue;
+              return;
             }
 
             const breakdownContents = summary.byCategory.slice(0, 5).map(c => ({
@@ -655,7 +664,7 @@ export async function POST(req: NextRequest) {
                 },
               },
             }]);
-            continue;
+            return;
           }
 
           // リッチメニュー: 経理に質問
@@ -663,7 +672,7 @@ export async function POST(req: NextRequest) {
             await replyMessage(replyToken, [
               textMessage('💬 何でも聞いてください！\n\n例えば:\n・「交際費の上限は？」\n・「車検代は何費？」\n・「今月の経費いくら？」\n\nテキストで質問を送ってください。'),
             ]);
-            continue;
+            return;
           }
 
           // リッチメニュー: 請求書作成 → フォームを開く（HMAC署名トークン使用）
@@ -699,7 +708,7 @@ export async function POST(req: NextRequest) {
                 },
               },
             }]);
-            continue;
+            return;
           }
 
           // リッチメニュー: 入金記録 → フォームを開く（HMAC署名トークン使用）
@@ -730,19 +739,19 @@ export async function POST(req: NextRequest) {
                 },
               },
             }]);
-            continue;
+            return;
           }
 
           // リッチメニュー: 仕訳履歴 → Flex Message
           if (text === '仕訳履歴を見せて') {
             if (!user.company_id) {
               await replyMessage(replyToken, [textMessage('まだデータがありません。レシートを送ってみてください 📸')]);
-              continue;
+              return;
             }
             const recent = await getRecentTransactions(user.company_id, 8);
             if (recent.length === 0) {
               await replyMessage(replyToken, [textMessage('📋 まだ取引がありません。\nレシートを送って記帳を始めましょう 📸')]);
-              continue;
+              return;
             }
 
             // 一覧表示 + 各取引に修正ボタン
@@ -777,7 +786,7 @@ export async function POST(req: NextRequest) {
                 },
               },
             }]);
-            continue;
+            return;
           }
 
           // 確認OK → 直近の取引を学習（counterpartyを正しく渡す。連打防止のため confirmed 状態のみ学習）
@@ -796,14 +805,14 @@ export async function POST(req: NextRequest) {
             await replyMessage(replyToken, [
               textMessage('👍 次のレシートがあれば送ってください！'),
             ]);
-            continue;
+            return;
           }
 
           // 科目変更リクエスト（「変更:txId」形式）
           if (text.startsWith('変更:')) {
             const txId = text.replace('変更:', '');
             await handleCategoryChange(replyToken, user, txId);
-            continue;
+            return;
           }
 
           // 科目選択（「科目:txId:category:label」形式）→ owner検証 + 学習
@@ -820,7 +829,7 @@ export async function POST(req: NextRequest) {
                 await replyMessage(replyToken, [
                   textMessage('⚠️ 該当する取引が見つかりません。仕訳履歴から再度選択してください。'),
                 ]);
-                continue;
+                return;
               }
               await updateTransactionCategory(txId, category, label);
               // counterpartyベースで学習（descriptionではない）
@@ -831,13 +840,13 @@ export async function POST(req: NextRequest) {
               await replyMessage(replyToken, [
                 textMessage(`✅ 「${label}」に変更しました！\n次回から同じ取引先は自動で「${label}」にします 📝`),
               ]);
-              continue;
+              return;
             }
           }
 
           // 通常のテキスト質問
           await handleTextMessage(replyToken, user, text);
-          continue;
+          return;
         }
 
         // --- その他のメッセージタイプ ---
@@ -855,7 +864,7 @@ export async function POST(req: NextRequest) {
           ]);
         } catch { /* ignore reply failure */ }
       }
-    }
+    }));
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -2,6 +2,7 @@
 
 import { useApp } from '@/lib/store';
 import { getGreeting, formatAmount } from '@/lib/format';
+import { AiDisclaimer } from '@/components/shared/AiDisclaimer';
 import Link from 'next/link';
 
 export default function Home() {
@@ -216,6 +217,13 @@ export default function Home() {
       <div className="flex items-center justify-center gap-2 text-[11px] text-gray-400 py-1">
         <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
         <span>AI自動処理 {autoRate}% ・ 正常稼働中</span>
+      </div>
+
+      {/* 免責・法的リンク */}
+      <AiDisclaimer compact />
+      <div className="flex justify-center gap-4 text-[11px] text-gray-400 pb-2">
+        <Link href="/terms" className="underline">利用規約</Link>
+        <Link href="/privacy" className="underline">プライバシーポリシー</Link>
       </div>
     </div>
   );

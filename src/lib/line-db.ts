@@ -13,6 +13,44 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,  // service_role でRLSバイパス
 );
 
+// ====== JST タイムゾーンヘルパー（UTC由来の月境界バグを防ぐ） ======
+
+/**
+ * JST（Asia/Tokyo）での「今日」を YYYY-MM-DD で返す。
+ * 旧コードは new Date().toISOString().split('T')[0] を使っていたが、これはUTC基準。
+ * JST 23時のレシートが UTC 翌日扱いになり、月またぎ取引が消える事故が起きていた。
+ */
+export function jstToday(): string {
+  const now = new Date();
+  // ja-JP ロケールで「YYYY/MM/DD」を取得して整形
+  const fmt = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = fmt.formatToParts(now);
+  const year = parts.find(p => p.type === 'year')!.value;
+  const month = parts.find(p => p.type === 'month')!.value;
+  const day = parts.find(p => p.type === 'day')!.value;
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * JSTでの「今月の開始日」と「翌月の開始日」を返す（fiscal_year_end_month対応版）。
+ */
+export function jstMonthRange(): { start: string; end: string; year: number; month: number } {
+  const today = jstToday();
+  const [yearStr, monthStr] = today.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const start = `${yearStr}-${monthStr}-01`;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const end = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+  return { start, end, year, month };
+}
+
 // ====== LINE ユーザー管理 ======
 
 export interface LineUser {
@@ -113,19 +151,57 @@ export interface ReceiptData {
   category: string;
   categoryLabel: string;
   confidence: number;
+  needsReview?: boolean;
+  reviewReason?: string;
+  isReducedTax?: boolean;
+  isWithholding?: boolean;
 }
 
 /**
  * レシートOCR結果をtransactionとしてDBに保存。
+ * - JST タイムゾーンで日付を扱う
+ * - レシート画像を Supabase Storage に保存（電帳法対応：7年保管）
+ * - confidence < 0.85 or needsReview なら pending_reviews にも自動INSERT
+ * - audit_logs に作成記録を残す（電帳法対応）
  * 返り値: 保存されたtransactionのID。
  */
 export async function saveReceiptTransaction(
   companyId: string,
   receipt: ReceiptData,
+  imageBuffer?: Buffer,
 ): Promise<string> {
   const txId = crypto.randomUUID();
-  const today = new Date().toISOString().split('T')[0];
+  const today = jstToday();
 
+  // 1. レシート画像を Supabase Storage に保存（電帳法：受領証憑7年保管）
+  let receiptStoragePath: string | null = null;
+  let receiptUrl: string | null = null;
+  if (imageBuffer) {
+    const path = `${companyId}/${today}/${txId}.jpg`;
+    const { error: uploadErr } = await supabase.storage
+      .from('receipts')
+      .upload(path, imageBuffer, {
+        contentType: 'image/jpeg',
+        upsert: false,
+      });
+    if (uploadErr) {
+      console.error('[LINE DB] Receipt image upload failed:', uploadErr);
+      // 画像保存失敗してもDB保存は継続（電帳法違反警告は別途出す）
+    } else {
+      receiptStoragePath = path;
+      // private bucket なので signed URL 生成（7日有効、UI表示用）
+      const { data: signed } = await supabase.storage
+        .from('receipts')
+        .createSignedUrl(path, 60 * 60 * 24 * 7);
+      receiptUrl = signed?.signedUrl || null;
+    }
+  }
+
+  // 2. needsReview 判定: confidence または明示フラグ
+  const needsReview = receipt.needsReview === true || receipt.confidence < 0.85;
+  const status: 'processed' | 'pending' = needsReview ? 'pending' : 'processed';
+
+  // 3. transactions に INSERT
   const { error } = await supabase
     .from('transactions')
     .insert({
@@ -139,8 +215,11 @@ export async function saveReceiptTransaction(
       category_label: receipt.categoryLabel,
       counterparty: receipt.store || '',
       source: 'LINE レシート',
-      status: receipt.confidence >= 0.8 ? 'processed' : 'pending',
+      status,
       confidence: receipt.confidence,
+      receipt_url: receiptUrl,
+      receipt_storage_path: receiptStoragePath,
+      receipt_uploaded_at: receiptStoragePath ? new Date().toISOString() : null,
     });
 
   if (error) {
@@ -148,17 +227,97 @@ export async function saveReceiptTransaction(
     throw error;
   }
 
+  // 4. needsReview なら pending_reviews にも自動INSERT
+  if (needsReview) {
+    const reviewQuestion = receipt.reviewReason
+      || `「${receipt.store || '不明'}」の勘定科目を確認してください（AI推定: ${receipt.categoryLabel}, 信頼度${Math.round(receipt.confidence * 100)}%）`;
+    await supabase
+      .from('pending_reviews')
+      .insert({
+        transaction_id: txId,
+        question: reviewQuestion,
+        choices: [
+          { label: '材料費', value: '材料仕入高' },
+          { label: '消耗品', value: '消耗品費' },
+          { label: '会議費', value: '会議費' },
+          { label: '交際費', value: '交際費' },
+          { label: '交通費', value: '旅費交通費' },
+          { label: '通信費', value: '通信費' },
+          { label: '雑費', value: '雑費' },
+        ],
+      });
+  }
+
+  // 5. audit_logs に記録（電帳法：訂正削除の履歴）
+  await supabase
+    .from('audit_logs')
+    .insert({
+      company_id: companyId,
+      table_name: 'transactions',
+      record_id: txId,
+      action: 'create',
+      new_values: {
+        category: receipt.category,
+        amount: receipt.amount,
+        store: receipt.store,
+        confidence: receipt.confidence,
+        source: 'LINE レシート (OCR)',
+      },
+      changed_by: 'ai',
+    })
+    .then(({ error: auditErr }) => {
+      if (auditErr) console.error('[LINE DB] Audit log failed:', auditErr);
+    });
+
   return txId;
 }
 
 /**
+ * 取引IDから counterparty を取得（学習用）。
+ */
+export async function getTransactionCounterparty(txId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('transactions')
+    .select('counterparty')
+    .eq('id', txId)
+    .single();
+  return data?.counterparty || null;
+}
+
+/**
+ * 会社情報を取得（節税アドバイス・財務諸表生成で使用）。
+ */
+export async function getCompanyInfo(companyId: string): Promise<{
+  industry: string | null;
+  capital_amount: number | null;
+  employee_count: number | null;
+  fiscal_year_end_month: number | null;
+  owner_name: string | null;
+} | null> {
+  const { data } = await supabase
+    .from('companies')
+    .select('industry, capital_amount, employee_count, fiscal_year_end_month, owner_name')
+    .eq('id', companyId)
+    .single();
+  return data || null;
+}
+
+/**
  * 取引の勘定科目を更新（ユーザーが修正した場合）。
+ * audit_logs に記録 + 該当 pending_reviews を解決済みに。
  */
 export async function updateTransactionCategory(
   txId: string,
   category: string,
   categoryLabel: string,
 ): Promise<void> {
+  // 旧値を取得（audit_log 用）
+  const { data: oldTx } = await supabase
+    .from('transactions')
+    .select('category, category_label, company_id')
+    .eq('id', txId)
+    .single();
+
   const { error } = await supabase
     .from('transactions')
     .update({
@@ -170,11 +329,41 @@ export async function updateTransactionCategory(
     })
     .eq('id', txId);
 
-  if (error) console.error('[LINE DB] Update category failed:', error);
+  if (error) {
+    console.error('[LINE DB] Update category failed:', error);
+    return;
+  }
+
+  // pending_reviews を解決済みに
+  await supabase
+    .from('pending_reviews')
+    .update({
+      answered_value: category,
+      answered_at: new Date().toISOString(),
+    })
+    .eq('transaction_id', txId);
+
+  // audit_logs に記録（電帳法）
+  if (oldTx) {
+    await supabase
+      .from('audit_logs')
+      .insert({
+        company_id: oldTx.company_id,
+        table_name: 'transactions',
+        record_id: txId,
+        action: 'update',
+        old_values: {
+          category: oldTx.category,
+          category_label: oldTx.category_label,
+        },
+        new_values: { category, category_label: categoryLabel },
+        changed_by: 'user',
+      });
+  }
 }
 
 /**
- * 特定会社の今月の経費サマリーを取得。
+ * 特定会社の今月の経費サマリーを取得（JST基準）。
  */
 export async function getMonthlyExpenseSummary(companyId: string): Promise<{
   totalExpense: number;
@@ -182,11 +371,7 @@ export async function getMonthlyExpenseSummary(companyId: string): Promise<{
   transactionCount: number;
   byCategory: { category: string; label: string; amount: number; count: number }[];
 }> {
-  const now = new Date();
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  const nextMonth = now.getMonth() === 11
-    ? `${now.getFullYear() + 1}-01-01`
-    : `${now.getFullYear()}-${String(now.getMonth() + 2).padStart(2, '0')}-01`;
+  const { start: monthStart, end: nextMonth } = jstMonthRange();
 
   const { data, error } = await supabase
     .from('transactions')
@@ -262,17 +447,13 @@ export async function getRecentTransactions(companyId: string, limit = 10): Prom
 }
 
 /**
- * 特定カテゴリの今月の合計を取得（「今月の会議費 計¥XX」表示用）。
+ * 特定カテゴリの今月の合計を取得（「今月の会議費 計¥XX」表示用、JST基準）。
  */
 export async function getCategoryMonthlyTotal(
   companyId: string,
   category: string,
 ): Promise<{ total: number; count: number }> {
-  const now = new Date();
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-  const nextMonth = now.getMonth() === 11
-    ? `${now.getFullYear() + 1}-01-01`
-    : `${now.getFullYear()}-${String(now.getMonth() + 2).padStart(2, '0')}-01`;
+  const { start: monthStart, end: nextMonth } = jstMonthRange();
 
   const { data, error } = await supabase
     .from('transactions')
@@ -292,7 +473,7 @@ export async function getCategoryMonthlyTotal(
 }
 
 /**
- * 入金（売上）をtransactionとして保存。
+ * 入金（売上）をtransactionとして保存（JST基準、audit_log付き）。
  */
 export async function saveIncomeTransaction(
   companyId: string,
@@ -301,7 +482,7 @@ export async function saveIncomeTransaction(
   description: string,
 ): Promise<string> {
   const txId = crypto.randomUUID();
-  const today = new Date().toISOString().split('T')[0];
+  const today = jstToday();
 
   const { error } = await supabase
     .from('transactions')
@@ -324,6 +505,17 @@ export async function saveIncomeTransaction(
     console.error('[LINE DB] Save income failed:', error);
     throw error;
   }
+
+  // audit_logs（電帳法）
+  await supabase.from('audit_logs').insert({
+    company_id: companyId,
+    table_name: 'transactions',
+    record_id: txId,
+    action: 'create',
+    new_values: { category: '売上高', amount, counterparty, source: 'LINE 入金記録' },
+    changed_by: 'user',
+  });
+
   return txId;
 }
 

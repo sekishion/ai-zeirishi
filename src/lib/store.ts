@@ -238,8 +238,10 @@ function recalculate(state: AppState): AppState {
   const revenueChange = prevIncome > 0 ? (income - prevIncome) / prevIncome : 0;
   const profitChange = prevProfit !== 0 ? (profit - prevProfit) / Math.abs(prevProfit) : 0;
 
-  // 手元資金は最後のCSVの残高 or 推定
-  const lastBalance = 10844240; // TODO: CSVの最終残高を保持する
+  // 手元資金: 全取引の累計（旧コードはハードコード ¥10,844,240 だった→他社に表示されるバグ）
+  const totalIncome = allTx.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const totalExpense = allTx.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const lastBalance = Math.max(0, totalIncome - totalExpense);
 
   const report = generateReport(allTx);
 

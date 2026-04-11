@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useApp } from '@/lib/store';
 import { formatAmount } from '@/lib/format';
 import Link from 'next/link';
 
@@ -15,15 +14,12 @@ interface ExpenseItem {
   status: 'pending' | 'approved' | 'rejected';
 }
 
-const mockExpenses: ExpenseItem[] = [
-  { id: 'e1', name: '鈴木一郎', date: '2026-03-28', description: 'タクシー代（現場→事務所）', amount: 3200, category: '交通費', status: 'pending' },
-  { id: 'e2', name: '佐藤花子', date: '2026-03-27', description: 'コンビニ 現場用飲料', amount: 1580, category: '福利厚生', status: 'pending' },
-  { id: 'e3', name: '鈴木一郎', date: '2026-03-25', description: '駐車場代', amount: 800, category: '交通費', status: 'approved' },
-  { id: 'e4', name: '田中太郎', date: '2026-03-20', description: '接待飲食（山田工務店）', amount: 15000, category: '交際費', status: 'approved' },
-];
+// 経費精算（複数従業員→社長承認）は β版では未実装。
+// 旧実装は架空の建設業データ（鈴木一郎・山田工務店等）が認証済みユーザーにも表示されていたため除去。
+const initialExpenses: ExpenseItem[] = [];
 
 export default function ExpensePage() {
-  const [expenses, setExpenses] = useState(mockExpenses);
+  const [expenses, setExpenses] = useState(initialExpenses);
   const pending = expenses.filter(e => e.status === 'pending');
   const processed = expenses.filter(e => e.status !== 'pending');
 
@@ -99,7 +95,19 @@ export default function ExpensePage() {
         </>
       )}
 
-      {pending.length === 0 && (
+      {pending.length === 0 && processed.length === 0 && (
+        <div className="text-center py-12 px-4">
+          <span className="text-[36px]">📋</span>
+          <p className="text-[15px] font-bold text-[#1A3A5C] mt-3">経費精算は β版で準備中です</p>
+          <p className="text-[12px] text-gray-500 mt-2 leading-relaxed">
+            複数従業員からの経費申請 → 社長承認のフローは<br />
+            次のアップデートで提供します。<br /><br />
+            現在は LINE で社長自身がレシートを送る運用でお願いします。
+          </p>
+        </div>
+      )}
+
+      {pending.length === 0 && processed.length > 0 && (
         <div className="text-center py-8">
           <span className="text-[36px]">✅</span>
           <p className="text-[14px] font-bold text-[#1A3A5C] mt-2">承認待ちはありません</p>

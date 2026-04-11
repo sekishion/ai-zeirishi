@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateInvoiceHTML, type Invoice } from '@/lib/financial-statements';
+import { verifyLiffToken } from '@/lib/liff-token';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { invoiceNo, client, items, subtotal, tax, total, issueDate, dueDate, bankInfo, companyName } = body;
+    const { token, invoiceNo, client, items, subtotal, tax, total, issueDate, dueDate, bankInfo, companyName } = body;
+
+    // HTMLプレビューにも認証を入れる（請求書情報の漏洩防止）
+    const payload = token ? verifyLiffToken(token) : null;
+    if (!payload) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    }
 
     const invoice: Invoice = {
       id: invoiceNo || `INV-${Date.now()}`,

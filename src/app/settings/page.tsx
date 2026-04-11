@@ -1,13 +1,64 @@
 'use client';
 
 import { useApp } from '@/lib/store';
+import { useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import Link from 'next/link';
 
 export default function SettingsPage() {
   const { state, dispatch } = useApp();
+  const searchParams = useSearchParams();
+  const freeeConnected = searchParams.get('freee_connected') === 'true';
+  const freeeError = searchParams.get('freee_error');
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ synced: number; total: number } | null>(null);
+
+  const handleFreeeConnect = () => {
+    if (!state.companyId) {
+      alert('会社情報の設定を先に完了してください');
+      return;
+    }
+    window.location.href = `/api/auth/freee?company_id=${state.companyId}`;
+  };
+
+  const handleFreeeSync = async () => {
+    if (!state.companyId) return;
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch('/api/freee/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyId: state.companyId, months: 3 }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setSyncResult({ synced: data.synced, total: data.total });
+      } else {
+        alert(`同期エラー: ${data.error}`);
+      }
+    } catch {
+      alert('同期に失敗しました');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   return (
     <div className="space-y-4">
       <h1 className="text-[17px] font-bold text-[#1A3A5C]">設定</h1>
+
+      {/* freee連携通知 */}
+      {freeeConnected && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-[12px] text-emerald-800">
+          freee会計との連携が完了しました。「データを同期」ボタンで取引データを取り込めます。
+        </div>
+      )}
+      {freeeError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-[12px] text-red-800">
+          freee連携エラー: {freeeError === 'denied' ? '認可が拒否されました' : freeeError === 'token_failed' ? 'トークンの取得に失敗しました' : freeeError}
+        </div>
+      )}
 
       {/* Account */}
       <p className="text-[11px] font-bold text-gray-400 tracking-wider">アカウント</p>
@@ -23,23 +74,61 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Connections */}
-      <p className="text-[11px] font-bold text-gray-400 tracking-wider">連携サービス</p>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-50">
-        {[
-          { icon: '🏦', name: '銀行口座', detail: 'みずほ銀行 ****1234', status: '接続中' },
-          { icon: '💳', name: 'クレジットカード', detail: 'VISA ****5678', status: '接続中' },
-          { icon: '📚', name: '会計ソフト', detail: 'freee', status: '接続中' },
-        ].map((item) => (
-          <div key={item.name} className="flex items-center gap-3 px-4 py-3">
-            <span className="text-[18px]">{item.icon}</span>
-            <div className="flex-1">
-              <p className="text-[13px] font-medium text-gray-800">{item.name}</p>
-              <p className="text-[11px] text-gray-400">{item.detail}</p>
+      {/* 会計ソフト連携 */}
+      <p className="text-[11px] font-bold text-gray-400 tracking-wider">会計ソフト連携</p>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {/* freee */}
+        <div className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#2D8C3C] rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold text-[11px]">freee</span>
             </div>
-            <span className="bg-emerald-50 text-emerald-600 text-[11px] font-bold px-2 py-0.5 rounded-full">{item.status}</span>
+            <div className="flex-1">
+              <p className="text-[13px] font-bold text-gray-800">freee会計</p>
+              <p className="text-[11px] text-gray-400">取引データを自動同期</p>
+            </div>
+            {freeeConnected ? (
+              <span className="bg-emerald-50 text-emerald-600 text-[11px] font-bold px-2 py-0.5 rounded-full">接続済み</span>
+            ) : (
+              <button
+                onClick={handleFreeeConnect}
+                className="bg-[#2D8C3C] text-white text-[12px] font-bold px-3 py-1.5 rounded-lg hover:bg-[#246F30] transition-colors"
+              >
+                連携する
+              </button>
+            )}
           </div>
-        ))}
+          {freeeConnected && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <button
+                onClick={handleFreeeSync}
+                disabled={syncing}
+                className="w-full bg-gray-50 text-[#1A3A5C] text-[12px] font-bold py-2 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                {syncing ? '同期中...' : 'データを同期（直近3ヶ月）'}
+              </button>
+              {syncResult && (
+                <p className="text-[11px] text-emerald-600 mt-2 text-center">
+                  {syncResult.synced}件の新規取引を取り込みました（全{syncResult.total}件中）
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-gray-50" />
+
+        {/* マネーフォワード（今後対応） */}
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="w-10 h-10 bg-[#3B7DE9] rounded-xl flex items-center justify-center">
+            <span className="text-white font-bold text-[9px]">MF</span>
+          </div>
+          <div className="flex-1">
+            <p className="text-[13px] font-medium text-gray-800">マネーフォワード クラウド</p>
+            <p className="text-[11px] text-gray-400">近日対応予定</p>
+          </div>
+          <span className="bg-gray-100 text-gray-400 text-[11px] font-bold px-2 py-0.5 rounded-full">準備中</span>
+        </div>
       </div>
 
       {/* Notifications */}
@@ -86,6 +175,12 @@ export default function SettingsPage() {
             <p className="text-[11px] text-gray-400">すべての取引・設定を初期化します</p>
           </div>
         </button>
+      </div>
+
+      {/* 法的リンク */}
+      <div className="flex justify-center gap-4 text-[11px] text-gray-400 py-2">
+        <Link href="/terms" className="underline">利用規約</Link>
+        <Link href="/privacy" className="underline">プライバシーポリシー</Link>
       </div>
 
       <div className="h-4" />

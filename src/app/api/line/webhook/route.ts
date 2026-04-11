@@ -24,8 +24,11 @@ import {
   getMonthlyExpenseSummary, getRecentTransactions,
   updateTransactionCategory, saveIncomeTransaction,
   learnPattern, predictFromLearned,
+  getTransactionCounterparty,
+  getCompanyInfo,
   type LineUser, type ReceiptData,
 } from '@/lib/line-db';
+import { signLiffToken } from '@/lib/liff-token';
 import { generateTaxAdvice } from '@/lib/tax-advisor';
 
 export const maxDuration = 60;
@@ -104,19 +107,28 @@ function yen(amount: number): string {
 
 async function handleFollow(replyToken: string, lineUserId: string) {
   const profile = await getLineProfile(lineUserId);
-  const user = await createLineUser(lineUserId, profile.displayName);
+  await createLineUser(lineUserId, profile.displayName);
 
   const name = profile.displayName || 'はじめまして';
 
   await updateLineUserOnboarding(lineUserId, { onboarding_step: 'industry_asked' });
 
+  // 規約同意フロー: 利用規約・プライバシーポリシーへの同意を取る（個情法第18条対応）
   await replyMessage(replyToken, [
     textMessage(
-      `${name}さん、こんにちは！\nAI経理部長です 📊\n\nレシートの写真を送るだけで、仕訳・記帳を自動でやります。\n\nまず、業種を教えてください👇`,
+      `${name}さん、こんにちは！\nAI経理部長「Keiri.ai」です 📊\n\nレシートをLINEで送るだけで、仕訳・記帳を自動でやります。\n\n⚠️ ご利用前に\n・利用規約: https://ai-zeirishi.vercel.app/terms\n・プライバシーポリシー: https://ai-zeirishi.vercel.app/privacy\n\n上記をご確認のうえ、業種を教えてください👇\n（業種選択をもって規約に同意いただいたものとみなします）`,
       [
         { label: '🏗️ 建設業', text: '建設業' },
         { label: '🍽️ 飲食業', text: '飲食業' },
         { label: '💻 IT業', text: 'IT業' },
+        { label: '🏥 医療', text: '医療' },
+        { label: '🛒 小売業', text: '小売業' },
+        { label: '⚖️ 士業', text: '士業' },
+        { label: '🏠 不動産業', text: '不動産業' },
+        { label: '🚚 運送業', text: '運送業' },
+        { label: '💇 美容業', text: '美容業' },
+        { label: '📚 教育サービス', text: '教育サービス' },
+        { label: '🏭 製造業', text: '製造業' },
         { label: '📦 その他', text: 'その他' },
       ],
     ),
@@ -126,18 +138,41 @@ async function handleFollow(replyToken: string, lineUserId: string) {
 // ====== フロー2: 業種選択（オンボーディング完了） ======
 
 async function handleIndustrySelection(replyToken: string, lineUserId: string, industry: string) {
-  // 有効な業種かチェック
-  const validIndustries = ['建設業', '飲食業', 'IT業', 'その他'];
-  const selectedIndustry = validIndustries.includes(industry) ? industry : '建設業';
+  // 有効な業種かチェック（grounding.tsのINDUSTRY_RULESキーと一致させる）
+  const validIndustries = Object.keys(INDUSTRY_RULES);
+  if (!validIndustries.includes(industry)) {
+    // 不正な業種テキストは silent fallback せず、再選択を促す
+    await replyMessage(replyToken, [
+      textMessage('業種が認識できませんでした。下の選択肢から選んでください👇', [
+        { label: '🏗️ 建設業', text: '建設業' },
+        { label: '🍽️ 飲食業', text: '飲食業' },
+        { label: '💻 IT業', text: 'IT業' },
+        { label: '🏥 医療', text: '医療' },
+        { label: '🛒 小売業', text: '小売業' },
+        { label: '⚖️ 士業', text: '士業' },
+        { label: '🏠 不動産業', text: '不動産業' },
+        { label: '🚚 運送業', text: '運送業' },
+        { label: '💇 美容業', text: '美容業' },
+        { label: '📚 教育サービス', text: '教育サービス' },
+        { label: '🏭 製造業', text: '製造業' },
+        { label: '📦 その他', text: 'その他' },
+      ]),
+    ]);
+    return;
+  }
 
   await updateLineUserOnboarding(lineUserId, {
-    industry: selectedIndustry,
+    industry,
     onboarding_step: 'completed',
   });
 
+  const noteForOther = industry === 'その他'
+    ? '\n\n⚠️ その他業種のため、業種特有の取引は確認画面が出ます。設定から具体的な業種を選び直すこともできます。'
+    : '';
+
   await replyMessage(replyToken, [
     textMessage(
-      `${selectedIndustry}ですね！\n${selectedIndustry}の仕訳ルールで記帳します。\n\n使い方はかんたん:\n📸 レシートを撮って送る → 自動で記帳\n💬 質問をテキストで送る → AIが回答\n\nさっそくレシートを送ってみてください！`,
+      `${industry}ですね！\n${industry}の仕訳ルールで記帳します。${noteForOther}\n\n使い方はかんたん:\n📸 レシートを撮って送る → 自動で記帳\n💬 質問をテキストで送る → AIが回答\n📋 リッチメニューから請求書・入金記録もできます\n\nさっそくレシートを送ってみてください！`,
     ),
   ]);
 }
@@ -155,14 +190,28 @@ async function handleReceiptImage(
 
   // 2. Gemini でOCR
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-  const industry = user.industry || '建設業';
-  const industryRules = INDUSTRY_RULES[industry] || INDUSTRY_RULES['建設業'];
+  // 業種が未設定なら fallback せず needsReview で受けるロジックに統一
+  const industry = user.industry || 'その他';
+  const knownIndustries = Object.keys(INDUSTRY_RULES);
+  const industryRules = knownIndustries.includes(industry)
+    ? INDUSTRY_RULES[industry]
+    : INDUSTRY_RULES['その他'];
 
-  // グラウンディング付きOCRプロンプト: 業種ルールを含めて正確に分類
-  const ocrPrompt = `このレシート・領収書を読み取り、以下の業種ルールに基づいて仕訳分類してください。
+  // グラウンディング付きOCRプロンプト: 全絶対ルール+業種+税法を含めて正確に分類
+  const ocrPrompt = `このレシート・領収書を読み取り、以下のルールに基づいて仕訳分類してください。
+あなたの判断は税務リスクに直結します。間違えるより「確認を求める」を優先してください。
 
 ## 業種: ${industry}
+### 業種別ルール
 ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
+
+### 必ず守るルール
+- 役員が個人カードで支払ったレシート → 借方:該当経費 / 貸方:役員借入金（役員貸付金は誤り）
+- 個人事業主への報酬と思われるもの → 源泉徴収検討、needsReview: true
+- 食品スーパー・コンビニで食品購入 → 軽減税率8%（isReducedTax: true）
+- 酒類（ビール・ワイン・日本酒） → 10%
+- 10万円以上の備品・機器 → needsReview: true（少額減価償却資産 or 固定資産の判定）
+- 飲食店レシート1人あたり¥10,000超 → 交際費。¥10,000以下 → 会議費
 
 ## 出力（JSON のみ返すこと）
 {
@@ -170,10 +219,20 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
   "store": "店名",
   "date": "YYYY-MM-DD（読めなければnull）",
   "items": "主な品目（短く）",
-  "category": "勘定科目（上記ルールに従う）",
+  "category": "勘定科目（正式名称、上記ルールに従う）",
   "categoryLabel": "社長向け表示名（例: 材料費、交通費、接待費）",
-  "confidence": 0.0〜1.0（ルールに明確に合致すれば高く、曖昧なら低く）
-}`;
+  "confidence": 0.0〜1.0,
+  "isReducedTax": false,
+  "isWithholding": false,
+  "needsReview": false,
+  "reviewReason": "確認が必要な理由（needsReview=trueの場合のみ）"
+}
+
+## confidence の基準
+- 0.95+: 完全に明確
+- 0.85-0.94: ほぼ明確
+- 0.70-0.84: 複数候補あり → needsReview: true
+- < 0.70: 不明 → needsReview: true 必須`;
 
   const result = await model.generateContent([
     { inlineData: { mimeType: 'image/jpeg', data: imageBuffer.toString('base64') } },
@@ -194,14 +253,20 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
   let receipt: ReceiptData;
   try {
     const parsed = JSON.parse(jsonMatch[0]);
+    // category が無い/空 のときは雑費にデフォルトせず、needsReview: true で受ける
+    const hasCategory = parsed.category && String(parsed.category).trim().length > 0;
     receipt = {
       amount: parsed.amount ? Number(parsed.amount) : null,
       store: parsed.store || null,
       date: parsed.date || null,
       items: parsed.items || null,
-      category: parsed.category || '雑費',
-      categoryLabel: parsed.categoryLabel || parsed.category || '雑費',
-      confidence: parsed.confidence ? Number(parsed.confidence) : 0.7,
+      category: hasCategory ? parsed.category : '未分類',
+      categoryLabel: hasCategory ? (parsed.categoryLabel || parsed.category) : '未分類',
+      confidence: hasCategory ? (parsed.confidence ? Number(parsed.confidence) : 0.7) : 0.0,
+      needsReview: parsed.needsReview === true || !hasCategory,
+      reviewReason: parsed.reviewReason || (hasCategory ? '' : 'AIが分類できませんでした'),
+      isReducedTax: parsed.isReducedTax === true,
+      isWithholding: parsed.isWithholding === true,
     };
   } catch {
     await replyMessage(replyToken, [
@@ -220,7 +285,7 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
     }
   }
 
-  // 3. DBに保存
+  // 3. DBに保存（画像も Storage に保存）
   if (!user.company_id) {
     await replyMessage(replyToken, [
       textMessage('エラーが発生しました。もう一度友だち追加をお試しください。'),
@@ -228,7 +293,7 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
     return;
   }
 
-  const txId = await saveReceiptTransaction(user.company_id, receipt);
+  const txId = await saveReceiptTransaction(user.company_id, receipt, imageBuffer);
 
   // 4. 同カテゴリの今月合計を取得
   const monthlyTotal = await getCategoryMonthlyTotal(user.company_id, receipt.category);
@@ -359,21 +424,30 @@ async function handleTextMessage(
     return;
   }
 
-  // DBから今月のサマリーと直近取引を取得
-  const [summary, recent] = await Promise.all([
+  // DBから今月のサマリー・直近取引・会社情報を取得
+  const [summary, recent, companyInfo] = await Promise.all([
     getMonthlyExpenseSummary(user.company_id),
     getRecentTransactions(user.company_id, 15),
+    getCompanyInfo(user.company_id),
   ]);
 
-  // 業種に応じたグラウンディングルール
-  const industry = user.industry || '建設業';
-  const industryRules = INDUSTRY_RULES[industry] || INDUSTRY_RULES['建設業'];
+  // 業種は user.industry を信頼。silent fallback を廃止
+  const industry = user.industry || 'その他';
+  const knownIndustries = Object.keys(INDUSTRY_RULES);
+  const industryRules = knownIndustries.includes(industry)
+    ? INDUSTRY_RULES[industry]
+    : INDUSTRY_RULES['その他'];
 
-  // 節税アドバイスを生成（取引データから自動判定）
-  const taxAdvices = recent.length > 0
+  // 節税アドバイス: データが3ヶ月以上溜まってから生成（少データでの誤提案を防ぐ）
+  // 会社情報も実DBから渡す（旧コードは全社中小企業1名と決め打ち）
+  const taxAdvices = recent.length >= 10
     ? generateTaxAdvice(
         recent.map(t => ({ ...t, time: '', source: '', status: 'processed' as const, counterparty: '', confidence: 1, type: t.type as 'income' | 'expense' })),
-        { capitalAmount: 0, employeeCount: 1, isSmallBusiness: true }
+        {
+          capitalAmount: companyInfo?.capital_amount || 0,
+          employeeCount: companyInfo?.employee_count || 1,
+          isSmallBusiness: (companyInfo?.capital_amount || 0) <= 100_000_000,
+        }
       ).filter(a => a.applicable).slice(0, 3)
     : [];
 
@@ -429,8 +503,8 @@ JSON形式は不要。自然な日本語で回答してください。`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text },
       ],
-      temperature: 0.5,
-      max_tokens: 512,
+      temperature: 0.1,  // 経理回答の一貫性を最優先（旧0.5は判定がブレる）
+      max_tokens: 1500,  // 旧512は途中で切れていた
       stream: false,
     });
 
@@ -482,9 +556,20 @@ export async function POST(req: NextRequest) {
 
         // --- 画像メッセージ（レシート） ---
         if (event.message.type === 'image') {
-          // オンボーディング未完了でもレシートは受け付ける（デフォルト建設業で処理）
-          if (user.onboarding_step !== 'completed') {
-            await updateLineUserOnboarding(lineUserId, { onboarding_step: 'completed' });
+          // オンボーディング未完了なら業種選択を強制（silent fallbackを廃止）
+          if (user.onboarding_step !== 'completed' || !user.industry) {
+            await replyMessage(replyToken, [
+              textMessage('まず業種を選んでください👇\n業種が分からないと正しく仕訳できません。', [
+                { label: '🏗️ 建設業', text: '建設業' },
+                { label: '🍽️ 飲食業', text: '飲食業' },
+                { label: '💻 IT業', text: 'IT業' },
+                { label: '🏥 医療', text: '医療' },
+                { label: '🛒 小売業', text: '小売業' },
+                { label: '⚖️ 士業', text: '士業' },
+                { label: '📦 その他', text: 'その他' },
+              ]),
+            ]);
+            continue;
           }
           await handleReceiptImage(replyToken, user, event.message.id);
           continue;
@@ -496,8 +581,8 @@ export async function POST(req: NextRequest) {
 
           // オンボーディング: 業種選択
           if (user.onboarding_step === 'new' || user.onboarding_step === 'industry_asked') {
-            const industries = ['建設業', '飲食業', 'IT業', 'その他'];
-            if (industries.includes(text)) {
+            const validIndustries = Object.keys(INDUSTRY_RULES);
+            if (validIndustries.includes(text)) {
               await handleIndustrySelection(replyToken, lineUserId, text);
               continue;
             }
@@ -581,9 +666,10 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          // リッチメニュー: 請求書作成 → フォームを開く
+          // リッチメニュー: 請求書作成 → フォームを開く（HMAC署名トークン使用）
           if (text === '請求書を作りたい') {
-            const formUrl = `https://ai-zeirishi.vercel.app/liff/invoice?uid=${lineUserId}`;
+            const token = signLiffToken(lineUserId);
+            const formUrl = `https://ai-zeirishi.vercel.app/liff/invoice?t=${token}`;
             await replyMessage(replyToken, [{
               type: 'flex',
               altText: '請求書を作成する',
@@ -616,9 +702,10 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          // リッチメニュー: 入金記録 → フォームを開く
+          // リッチメニュー: 入金記録 → フォームを開く（HMAC署名トークン使用）
           if (text === '入金を記録したい') {
-            const formUrl = `https://ai-zeirishi.vercel.app/liff/income?uid=${lineUserId}`;
+            const token = signLiffToken(lineUserId);
+            const formUrl = `https://ai-zeirishi.vercel.app/liff/income?t=${token}`;
             await replyMessage(replyToken, [{
               type: 'flex',
               altText: '入金を記録する',
@@ -693,13 +780,17 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          // 確認OK → 直近の取引を学習
+          // 確認OK → 直近の取引を学習（counterpartyを正しく渡す。連打防止のため confirmed 状態のみ学習）
           if (text === 'OK') {
             if (user.company_id) {
               const lastTx = await getRecentTransactions(user.company_id, 1);
               if (lastTx.length > 0 && lastTx[0].type === 'expense') {
                 const t = lastTx[0];
-                await learnPattern(user.company_id, t.description, t.description, t.category, t.categoryLabel, 'expense');
+                // counterparty を取得（descriptionから店名だけ抜き出す or DBから直接）
+                const counterparty = await getTransactionCounterparty(t.id);
+                if (counterparty) {
+                  await learnPattern(user.company_id, counterparty, t.description, t.category, t.categoryLabel, 'expense');
+                }
               }
             }
             await replyMessage(replyToken, [
@@ -715,19 +806,27 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
-          // 科目選択（「科目:txId:category:label」形式）→ 学習も実行
+          // 科目選択（「科目:txId:category:label」形式）→ owner検証 + 学習
           if (text.startsWith('科目:')) {
             const parts = text.split(':');
             if (parts.length >= 4 && user.company_id) {
               const txId = parts[1];
               const category = parts[2];
               const label = parts[3];
-              await updateTransactionCategory(txId, category, label);
-              // 取引先を取得して学習
-              const recentTx = await getRecentTransactions(user.company_id, 20);
+              // owner検証: txId がこのcompanyのものか確認
+              const recentTx = await getRecentTransactions(user.company_id, 50);
               const tx = recentTx.find(t => t.id === txId);
-              if (tx) {
-                await learnPattern(user.company_id, tx.description, tx.description, category, label, 'expense');
+              if (!tx) {
+                await replyMessage(replyToken, [
+                  textMessage('⚠️ 該当する取引が見つかりません。仕訳履歴から再度選択してください。'),
+                ]);
+                continue;
+              }
+              await updateTransactionCategory(txId, category, label);
+              // counterpartyベースで学習（descriptionではない）
+              const counterparty = await getTransactionCounterparty(txId);
+              if (counterparty) {
+                await learnPattern(user.company_id, counterparty, tx.description, category, label, 'expense');
               }
               await replyMessage(replyToken, [
                 textMessage(`✅ 「${label}」に変更しました！\n次回から同じ取引先は自動で「${label}」にします 📝`),

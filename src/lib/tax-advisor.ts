@@ -26,12 +26,19 @@ export function generateTaxAdvice(
   const advices: TaxAdvice[] = [];
   const isSmall = companyInfo.isSmallBusiness !== false; // デフォルトtrue
 
+  // データが少なすぎる場合は提案しない（最低3ヶ月、かつ取引10件以上）
+  if (transactions.length < 10) return [];
+  const monthSet = [...new Set(transactions.map(t => t.date.slice(0, 7)))];
+  if (monthSet.length < 3) return [];
+
   // 年間の数字を集計
   const income = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
   const expense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const profit = income - expense;
-  const months = [...new Set(transactions.map(t => t.date.slice(0, 7)))].length || 1;
-  const annualProfit = Math.round(profit * (12 / months));
+  // 年換算: ユニーク月数で割って12倍するのではなく、最古〜最新の実日数ベース
+  const dates = transactions.map(t => new Date(t.date).getTime()).sort();
+  const spanDays = Math.max(1, (dates[dates.length - 1] - dates[0]) / (1000 * 60 * 60 * 24));
+  const annualProfit = Math.round(profit * (365 / spanDays));
 
   // 1. 小規模企業共済
   if (annualProfit > 500000) {

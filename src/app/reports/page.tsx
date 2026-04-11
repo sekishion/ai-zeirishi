@@ -2,6 +2,7 @@
 
 import { useApp } from '@/lib/store';
 import { formatAmount } from '@/lib/format';
+import { AiDisclaimer } from '@/components/shared/AiDisclaimer';
 import Link from 'next/link';
 
 const COLORS = ['#3B82F6', '#8B5CF6', '#F59E0B', '#EC4899', '#6EE7B7', '#D1D5DB'];
@@ -127,6 +128,8 @@ export default function Reports() {
           ))}
         </div>
       </div>
+
+      <AiDisclaimer />
     </div>
   );
 }

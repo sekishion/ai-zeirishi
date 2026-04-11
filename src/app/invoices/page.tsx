@@ -19,12 +19,9 @@ interface InvoiceItem {
   unitPrice: number;
 }
 
-const mockInvoices: Invoice[] = [
-  { id: 'INV-001', client: '山田工務店', total: 200000, issueDate: '2026-03-15', dueDate: '2026-03-25', status: 'overdue' },
-  { id: 'INV-002', client: '山田商事', total: 150000, issueDate: '2026-03-20', dueDate: '2026-05-31', status: 'sent' },
-  { id: 'INV-003', client: 'ABC建設', total: 3316500, issueDate: '2026-03-31', dueDate: '2026-04-30', status: 'sent' },
-  { id: 'INV-004', client: 'ABC建設', total: 3080000, issueDate: '2026-02-28', dueDate: '2026-03-31', status: 'paid' },
-];
+// 旧実装は山田工務店・ABC建設等の建設業の架空データを認証ユーザーにも表示していたため除去。
+// 請求書管理画面のDB連携は次のアップデートで提供。現在は LINE のリッチメニューから作成可能。
+const mockInvoices: Invoice[] = [];
 
 const statusConfig = {
   overdue: { label: '期限超過', color: 'bg-red-50 text-red-600' },

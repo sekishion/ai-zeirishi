@@ -24,9 +24,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // JST基準で「先月」を計算（cronは毎月1日 00:00 UTC = JST 9時に実行 → 先月分を送る）
   const now = new Date();
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const monthLabel = `${now.getMonth() + 1}月`;
+  const jstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+  const lastMonth = new Date(jstNow.getFullYear(), jstNow.getMonth() - 1, 1);
+  const month = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+  const monthLabel = `${lastMonth.getMonth() + 1}月`;
 
   // 全LINE ユーザーを取得
   const { data: users } = await supabase.from('line_users').select('line_user_id, company_id').not('company_id', 'is', null);
@@ -38,11 +41,10 @@ export async function GET(req: NextRequest) {
 
   for (const user of users) {
     try {
-      // 今月の取引を集計
+      // 先月の取引を集計（JST基準）
       const monthStart = `${month}-01`;
-      const nextMonth = now.getMonth() === 11
-        ? `${now.getFullYear() + 1}-01-01`
-        : `${now.getFullYear()}-${String(now.getMonth() + 2).padStart(2, '0')}-01`;
+      const nextMonthDate = new Date(lastMonth.getFullYear(), lastMonth.getMonth() + 1, 1);
+      const nextMonth = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-01`;
 
       const { data: txs } = await supabase
         .from('transactions')

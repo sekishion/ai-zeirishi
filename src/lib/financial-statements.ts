@@ -67,24 +67,19 @@ export function generatePL(transactions: Transaction[], period: string): PLState
     totalRevenue += amount;
   }
 
-  // 売上原価
-  const cogsNames = ['材料仕入高', '材料費', '外注費'];
+  // 売上原価: account.group が「売上原価」のものだけ。文字列includes判定は誤分類リスクがあるため廃止
   const cogsItems: { name: string; code: string; amount: number }[] = [];
   let totalCOGS = 0;
-  for (const [name, amount] of expenseMap) {
-    if (cogsNames.some(c => name.includes(c))) {
-      const account = ACCOUNTS.find(a => a.name === name || a.label === name);
-      cogsItems.push({ name: account?.name || name, code: account?.code || '', amount });
-      totalCOGS += amount;
-    }
-  }
-
-  // 販管費
   const sgaItems: { name: string; code: string; amount: number }[] = [];
   let totalSGA = 0;
+
   for (const [name, amount] of expenseMap) {
-    if (!cogsNames.some(c => name.includes(c))) {
-      const account = ACCOUNTS.find(a => a.name === name || a.label === name);
+    const account = ACCOUNTS.find(a => a.name === name || a.label === name);
+    const isCOGS = account?.group === '売上原価';
+    if (isCOGS) {
+      cogsItems.push({ name: account?.name || name, code: account?.code || '', amount });
+      totalCOGS += amount;
+    } else {
       sgaItems.push({ name: account?.name || name, code: account?.code || '', amount });
       totalSGA += amount;
     }
@@ -174,7 +169,9 @@ export function transactionsToCSV(transactions: Transaction[]): string {
       tx.memo || '',
     ].map(v => escapeCSV(v)).join(',');
   });
-  return [headers.join(','), ...rows].join('\n');
+  // UTF-8 BOM をつける（Excel で開いたときの文字化け防止）
+  const BOM = '\ufeff';
+  return BOM + [headers.join(','), ...rows].join('\r\n');
 }
 
 // 請求書データ

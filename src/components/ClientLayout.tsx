@@ -13,6 +13,8 @@ const NO_NAV_PAGES = ['/line', '/onboarding', '/login'];
 function isPublicPage(pathname: string): boolean {
   return pathname === '/lp'
     || pathname === '/login'
+    || pathname === '/terms'
+    || pathname === '/privacy'
     || pathname.startsWith('/liff/');
 }
 

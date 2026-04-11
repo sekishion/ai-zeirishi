@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>リッチメニュー ライト版プレビュー</title>
+<style>
+  body {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+    padding: 40px;
+    background: #f5f5f5;
+    font-family: -apple-system, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  }
+  h2 {
+    color: #333;
+    margin: 0;
+  }
+  .label {
+    color: #888;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  /* リッチメニュー本体 — LINE公式仕様: 2500x1686px（2行）を縮小表示 */
+  .richmenu {
+    width: 600px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 12px;
+    background: #FFFFFF;
+    border-right: 1px solid #E8E8E8;
+    border-bottom: 1px solid #E8E8E8;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .cell:nth-child(3n) {
+    border-right: none;
+  }
+  .row:last-child .cell {
+    border-bottom: none;
+  }
+  .cell:hover {
+    background: #F7F7F7;
+  }
+
+  .icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    background: #E8F5E9;
+  }
+  .icon svg {
+    width: 26px;
+    height: 26px;
+    stroke: #06C755;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .cell-label {
+    font-size: 16px;
+    font-weight: 700;
+    color: #222222;
+    margin-bottom: 3px;
+    letter-spacing: 0.02em;
+  }
+  .cell-sub {
+    font-size: 11px;
+    color: #999999;
+    letter-spacing: 0.01em;
+  }
+
+  /* === 実際のPNG出力用（2500x1686） === */
+  .richmenu-export {
+    width: 2500px;
+    height: 1686px;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .richmenu-export .row {
+    height: 843px;
+  }
+  .richmenu-export .cell {
+    padding: 0;
+  }
+  .richmenu-export .icon {
+    width: 160px;
+    height: 160px;
+    border-radius: 40px;
+    margin-bottom: 32px;
+  }
+  .richmenu-export .icon svg {
+    width: 88px;
+    height: 88px;
+    stroke-width: 1.5;
+  }
+  .richmenu-export .cell-label {
+    font-size: 56px;
+    margin-bottom: 12px;
+  }
+  .richmenu-export .cell-sub {
+    font-size: 36px;
+  }
+
+  /* 比較用: 現行ダーク版 */
+  .dark .cell {
+    background: #1B2333;
+    border-color: #2A3548;
+  }
+  .dark .cell:hover {
+    background: #232D40;
+  }
+  .dark .icon {
+    background: rgba(6, 199, 85, 0.15);
+  }
+  .dark .cell-label {
+    color: #FFFFFF;
+  }
+  .dark .cell-sub {
+    color: #8899AA;
+  }
+</style>
+</head>
+<body>
+
+<h2>リッチメニュー比較</h2>
+
+<!-- 現行: ダーク -->
+<div>
+  <div class="label">現行（ダーク）</div>
+  <div class="richmenu dark">
+    <div class="row">
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M2 17l5-4 3 3 4-5 8 6"/></svg>
+        </div>
+        <div class="cell-label">レシート</div>
+        <div class="cell-sub">撮影して送る</div>
+      </div>
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg>
+        </div>
+        <div class="cell-label">請求書</div>
+        <div class="cell-sub">作成・送付</div>
+      </div>
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        </div>
+        <div class="cell-label">入金記録</div>
+        <div class="cell-sub">売上を記録</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 4 5-7"/></svg>
+        </div>
+        <div class="cell-label">今月のまとめ</div>
+        <div class="cell-sub">経費・売上を確認</div>
+      </div>
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+        </div>
+        <div class="cell-label">仕訳履歴</div>
+        <div class="cell-sub">最近の取引</div>
+      </div>
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        </div>
+        <div class="cell-label">経理に質問</div>
+        <div class="cell-sub">何でも聞いて</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 新: ライト -->
+<div>
+  <div class="label">新デザイン（ライト）</div>
+  <div class="richmenu">
+    <div class="row">
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M2 17l5-4 3 3 4-5 8 6"/></svg>
+        </div>
+        <div class="cell-label">レシート</div>
+        <div class="cell-sub">撮影して送る</div>
+      </div>
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg>
+        </div>
+        <div class="cell-label">請求書</div>
+        <div class="cell-sub">作成・送付</div>
+      </div>
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        </div>
+        <div class="cell-label">入金記録</div>
+        <div class="cell-sub">売上を記録</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 4 5-7"/></svg>
+        </div>
+        <div class="cell-label">今月のまとめ</div>
+        <div class="cell-sub">経費・売上を確認</div>
+      </div>
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+        </div>
+        <div class="cell-label">仕訳履歴</div>
+        <div class="cell-sub">最近の取引</div>
+      </div>
+      <div class="cell">
+        <div class="icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        </div>
+        <div class="cell-label">経理に質問</div>
+        <div class="cell-sub">何でも聞いて</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

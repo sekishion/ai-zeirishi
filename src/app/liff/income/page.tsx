@@ -6,7 +6,8 @@ import { Suspense } from 'react';
 
 function IncomeForm() {
   const searchParams = useSearchParams();
-  const uid = searchParams.get('uid') || '';
+  // 旧 ?uid= 生渡しを廃止。?t=<HMAC token> を使用
+  const token = searchParams.get('t') || searchParams.get('uid') || '';
 
   const [client, setClient] = useState('');
   const [amount, setAmount] = useState('');
@@ -30,7 +31,7 @@ function IncomeForm() {
       const res = await fetch('/api/liff/income', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lineUserId: uid, client: client.trim(), amount: parsedAmount, memo }),
+        body: JSON.stringify({ token, client: client.trim(), amount: parsedAmount, memo }),
       });
       const data = await res.json();
       if (data.ok) {

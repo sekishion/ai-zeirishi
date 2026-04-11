@@ -35,7 +35,8 @@ function displayDate(dateStr: string): string {
 
 function InvoiceForm() {
   const searchParams = useSearchParams();
-  const uid = searchParams.get('uid') || '';
+  // 旧 ?uid= 生渡しを廃止。?t=<HMAC token> を使用
+  const token = searchParams.get('t') || searchParams.get('uid') || '';
 
   const today = formatDate(new Date());
 
@@ -116,7 +117,7 @@ function InvoiceForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          lineUserId: uid,
+          token,
           client: client.trim(),
           issueDate,
           dueDate,
@@ -152,6 +153,7 @@ function InvoiceForm() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        token,
         invoiceNo: result?.invoiceNo,
         client,
         items: items.filter(i => i.name && i.unitPrice).map(i => ({

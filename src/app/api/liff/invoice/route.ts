@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLineUser, saveIncomeTransaction } from '@/lib/line-db';
+import { verifyLiffToken } from '@/lib/liff-token';
 
 const CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN!;
 
@@ -17,9 +18,16 @@ async function pushMessage(userId: string, messages: Record<string, unknown>[]) 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { lineUserId, client, items, subtotal, tax, total, dueMonths, memo } = body;
+    const { token, client, items, subtotal, tax, total, dueMonths, memo } = body;
 
-    if (!lineUserId || !client || !total) {
+    // HMAC署名トークン検証
+    const payload = token ? verifyLiffToken(token) : null;
+    if (!payload) {
+      return NextResponse.json({ ok: false, error: 'トークンが無効または期限切れです。LINEから再度ボタンを押してください。' }, { status: 401 });
+    }
+    const lineUserId = payload.lineUserId;
+
+    if (!client || !total) {
       return NextResponse.json({ ok: false, error: '必須項目が不足しています' }, { status: 400 });
     }
 

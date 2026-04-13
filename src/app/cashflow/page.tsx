@@ -1,78 +1,83 @@
 'use client';
 
 import { useApp } from '@/lib/store';
+import { formatAmount } from '@/lib/format';
 import Link from 'next/link';
 
 export default function CashflowPage() {
   const { state } = useApp();
 
-  // 実データから月別集計
-  const monthlyNet = new Map<string, number>();
+  // 月別集計（実データ）
+  const monthlyData = new Map<string, { income: number; expense: number }>();
   state.transactions.forEach(t => {
-    const m = t.date.slice(0, 7); // "2026-03"
-    const current = monthlyNet.get(m) || 0;
-    monthlyNet.set(m, current + (t.type === 'income' ? t.amount : -t.amount));
+    const m = t.date.slice(0, 7);
+    const current = monthlyData.get(m) || { income: 0, expense: 0 };
+    if (t.type === 'income') current.income += t.amount;
+    else current.expense += t.amount;
+    monthlyData.set(m, current);
   });
 
-  // 実績月のバーを生成
-  const sortedMonths = Array.from(monthlyNet.keys()).sort();
-  let runningBalance = state.cashForecast.projectedBalance;
+  const sortedMonths = Array.from(monthlyData.keys()).sort();
+
+  // 実績のバランス推移（累積）
+  let runningBalance = 0;
   const actualBars = sortedMonths.map(m => {
-    const label = `${parseInt(m.split('-')[1])}月`;
-    return { month: label, value: Math.round(runningBalance / 10000), actual: true };
+    const data = monthlyData.get(m)!;
+    runningBalance += data.income - data.expense;
+    const mNum = parseInt(m.split('-')[1]);
+    return { month: `${mNum}月`, value: Math.round(Math.max(0, runningBalance) / 10000), actual: true };
   });
 
-  // 予測月を追加（月間平均ネットで3ヶ月先を予測）
+  // 予測月を追加（月間平均ネットで6ヶ月先まで）
   const avgNet = sortedMonths.length > 0
-    ? Array.from(monthlyNet.values()).reduce((s, v) => s + v, 0) / sortedMonths.length
+    ? Array.from(monthlyData.values()).reduce((s, v) => s + v.income - v.expense, 0) / sortedMonths.length
     : 0;
   const lastBalance = runningBalance;
-  const forecastBars = [1, 2, 3].map(i => {
-    const val = Math.round((lastBalance + avgNet * i) / 10000);
-    const mNum = sortedMonths.length > 0
-      ? (parseInt(sortedMonths[sortedMonths.length - 1].split('-')[1]) + i)
-      : i + 3;
-    return { month: `${mNum > 12 ? mNum - 12 : mNum}月`, value: Math.max(0, val), actual: false };
+  const lastMonthNum = sortedMonths.length > 0
+    ? parseInt(sortedMonths[sortedMonths.length - 1].split('-')[1])
+    : 3;
+
+  const forecastCount = Math.max(0, 6 - actualBars.length);
+  const forecastBars = Array.from({ length: forecastCount }, (_, i) => {
+    const val = Math.round(Math.max(0, lastBalance + avgNet * (i + 1)) / 10000);
+    const mNum = (lastMonthNum + i + 1);
+    return { month: `${mNum > 12 ? mNum - 12 : mNum}月`, value: val, actual: false };
   });
 
-  const forecastData = [...actualBars.slice(-3), ...forecastBars];
-  const maxVal = Math.max(...forecastData.map(d => d.value), 1);
+  const chartData = [...actualBars.slice(-3), ...forecastBars];
+  const maxVal = Math.max(...chartData.map(d => d.value), 1);
 
-  // 直近の大きな取引を表示
-  const recentTx = state.transactions
+  // 今後の入出金予定（金額が大きい順に上位5件）
+  const upcomingTx = state.transactions
     .slice()
     .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5)
-    .map(t => ({
-      type: (t.type === 'income' ? 'in' : 'out') as 'in' | 'out',
-      name: t.counterparty,
-      date: t.date.slice(5).replace('-', '/'),
-      amount: t.amount,
-    }));
+    .slice(0, 5);
+
   const level = state.cashForecast.level;
   const months = state.cashForecast.monthsRemaining;
 
-  const safetyColor = level === 'safe' ? 'text-emerald-600' : level === 'caution' ? 'text-amber-600' : 'text-red-600';
-  const safetyBg = level === 'safe' ? 'bg-emerald-500' : level === 'caution' ? 'bg-amber-500' : 'bg-red-500';
+  const safetyColor = level === 'safe' ? 'text-[#059669]' : level === 'caution' ? 'text-[#D97706]' : 'text-[#DC2626]';
+  const safetyBg = level === 'safe' ? 'bg-gradient-to-r from-[#059669] to-emerald-400' : level === 'caution' ? 'bg-gradient-to-r from-[#D97706] to-amber-400' : 'bg-gradient-to-r from-[#DC2626] to-red-400';
   const safetyLabel = level === 'safe' ? '安全' : level === 'caution' ? '注意' : '危険';
   const safetyPct = Math.min((months / 24) * 100, 100);
 
   return (
-    <div className="pt-6 space-y-4">
-      <div className="flex items-center gap-3 mb-2">
+    <div className="space-y-4 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center gap-3">
         <Link href="/" className="text-[#1A3A5C] p-1">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </Link>
-        <h1 className="text-base font-bold text-[#1A3A5C]">資金繰り予測</h1>
+        <h1 className="text-[17px] font-bold text-[#1A3A5C]">資金繰り予測</h1>
       </div>
 
       {/* Safety indicator */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-5 text-center">
-        <p className="text-xs text-gray-500 mb-1">資金の安全度</p>
-        <p className={`text-4xl font-black ${safetyColor}`}>{safetyLabel}</p>
-        <p className={`text-sm font-bold ${safetyColor} mt-1`}>あと{months}ヶ月以上</p>
+      <div className="bg-white rounded-[14px] border border-gray-200 p-5 text-center">
+        <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-2">資金の安全度</p>
+        <p className={`text-[36px] font-black ${safetyColor}`}>{safetyLabel}</p>
+        <p className={`text-[14px] font-bold ${safetyColor} mt-1`}>あと{months}ヶ月以上</p>
         <div className="mt-3 mx-auto w-4/5 h-2.5 bg-gray-200 rounded-full overflow-hidden">
           <div className={`h-full ${safetyBg} rounded-full transition-all`} style={{ width: `${safetyPct}%` }} />
         </div>
@@ -81,47 +86,50 @@ export default function CashflowPage() {
         </div>
       </div>
 
-      {/* Forecast chart */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-4">
-        <p className="text-xs font-bold text-[#1A3A5C] mb-3">月別予測（8ヶ月）</p>
+      {/* 月別予測チャート */}
+      <div className="bg-white rounded-[14px] border border-gray-200 p-4">
+        <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-3">月別予測（6ヶ月先まで）</p>
         <div className="overflow-x-auto -mx-1 px-1">
-          <div className="flex items-end gap-2 h-28" style={{ minWidth: `${forecastData.length * 52}px` }}>
-            {forecastData.map((d) => (
+          <div className="flex items-end gap-2 h-28" style={{ minWidth: `${chartData.length * 52}px` }}>
+            {chartData.map((d) => (
               <div key={d.month} className="flex-1 flex flex-col items-center gap-1 min-w-[40px]">
                 <span className="text-[11px] font-bold text-[#1A3A5C] whitespace-nowrap">{d.value}万</span>
                 <div
                   className={`w-full rounded-t transition-all ${
-                    d.actual ? 'bg-[#1A3A5C]' : 'bg-blue-100 border border-dashed border-blue-400'
+                    d.actual ? 'bg-[#1A3A5C]' : 'bg-blue-50 border-2 border-dashed border-[#2563EB]'
                   }`}
                   style={{ height: `${(d.value / maxVal) * 80}px` }}
                 />
-                <span className={`text-[11px] whitespace-nowrap ${d.actual ? 'text-gray-500 font-bold' : 'text-blue-400'}`}>{d.month}</span>
+                <span className={`text-[11px] whitespace-nowrap ${d.actual ? 'text-[#1A3A5C] font-bold' : 'text-[#2563EB]'}`}>
+                  {d.month}
+                </span>
               </div>
             ))}
           </div>
         </div>
         <div className="flex gap-4 justify-center mt-2 text-[11px] text-gray-500">
-          <span>■ 実績</span><span className="text-blue-400">┅ AI予測</span>
+          <span><span className="inline-block w-3 h-2 bg-[#1A3A5C] rounded-sm mr-1" />実績</span>
+          <span><span className="inline-block w-3 h-2 border border-dashed border-[#2563EB] rounded-sm mr-1" />AI予測</span>
         </div>
       </div>
 
-      {/* Upcoming */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-4">
-        <p className="text-xs font-bold text-[#1A3A5C] mb-3">今後の入出金予定</p>
+      {/* 今後の入出金予定 */}
+      <div className="bg-white rounded-[14px] border border-gray-200 p-4">
+        <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-3">今後の入出金予定</p>
         <div className="space-y-0">
-          {recentTx.map((tx, i) => (
-            <div key={i} className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-b-0">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
-                tx.type === 'in' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
+          {upcomingTx.map((tx) => (
+            <div key={tx.id} className="flex items-center gap-3 py-3 border-b border-gray-100 last:border-b-0">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
+                tx.type === 'income' ? 'bg-emerald-50 text-[#059669]' : 'bg-red-50 text-[#DC2626]'
               }`}>
-                {tx.type === 'in' ? '↓' : '↑'}
+                {tx.type === 'income' ? '↓' : '↑'}
               </div>
-              <div className="flex-1">
-                <p className="text-xs font-medium text-gray-800">{tx.name}</p>
-                <p className="text-[11px] text-gray-400">{tx.date}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-medium text-gray-800 truncate">{tx.counterparty}</p>
+                <p className="text-[11px] text-gray-500">{tx.date.slice(5).replace('-', '/')}</p>
               </div>
-              <p className={`text-sm font-bold ${tx.type === 'in' ? 'text-emerald-600' : 'text-gray-700'}`}>
-                {tx.type === 'in' ? '+' : '-'}¥{tx.amount.toLocaleString()}
+              <p className={`text-[14px] font-bold ${tx.type === 'income' ? 'text-[#059669]' : 'text-[#1A3A5C]'}`}>
+                {tx.type === 'income' ? '+' : '-'}{formatAmount(tx.amount)}
               </p>
             </div>
           ))}

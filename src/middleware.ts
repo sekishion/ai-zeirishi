@@ -33,13 +33,13 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   // 未ログインで保護ページにアクセス → ログインへリダイレクト
-  const isPublicPage = request.nextUrl.pathname === '/'
-    || request.nextUrl.pathname === '/login'
+  const isPublicPage = request.nextUrl.pathname === '/login'
     || request.nextUrl.pathname === '/lp'
     || request.nextUrl.pathname === '/terms'
     || request.nextUrl.pathname === '/privacy'
     || request.nextUrl.pathname.startsWith('/liff/');
-  const isApiRoute = request.nextUrl.pathname.startsWith('/api/');
+  const isApiRoute = request.nextUrl.pathname.startsWith('/api/')
+    || request.nextUrl.pathname.startsWith('/auth/');
   // /auth/callback は API ルートで実装（このmatcherは API 除外なのでここに来ない）
 
   if (!user && !isPublicPage && !isApiRoute) {

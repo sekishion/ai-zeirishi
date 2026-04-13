@@ -250,6 +250,60 @@ function InvoiceForm() {
     window.open(url, '_blank');
   };
 
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const downloadPdf = async () => {
+    setPdfLoading(true);
+    try {
+      const res = await fetch('/api/liff/invoice-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          invoiceNo: result?.invoiceNo,
+          client,
+          clientPostalCode,
+          clientAddress,
+          clientRegistrationNumber,
+          items: items.filter(i => i.name && i.unitPrice).map(i => ({
+            name: i.name,
+            quantity: i.quantity,
+            unitPrice: parseInt(String(i.unitPrice).replace(/[,，]/g, ''), 10),
+            taxRate: i.taxRate,
+          })),
+          subtotal: calc.subtotal,
+          subtotal10: calc.subtotal10,
+          subtotal8: calc.subtotal8,
+          tax: calc.tax,
+          tax10: calc.tax10,
+          tax8: calc.tax8,
+          total: calc.total,
+          issueDate,
+          dueDate,
+          bankInfo,
+          memo,
+        }),
+      });
+      if (!res.ok) {
+        alert('PDF生成に失敗しました');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${result?.invoiceNo || 'invoice'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('PDF生成に失敗しました');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   if (done && result) {
     return (
       <div className="min-h-screen bg-[#f0fdf4] flex items-center justify-center p-6">
@@ -262,10 +316,17 @@ function InvoiceForm() {
           <p className="text-[12px] text-gray-400 mb-4">支払期限: {displayDate(dueDate)}</p>
           <p className="text-[12px] text-[#06C755] mb-5">売上として自動記帳しました ✅</p>
           <button
-            onClick={openInvoiceHTML}
-            className="w-full bg-white border-2 border-[#06C755] text-[#06C755] font-bold py-3 rounded-full text-[14px] mb-2"
+            onClick={downloadPdf}
+            disabled={pdfLoading}
+            className="w-full bg-[#1A3A5C] text-white font-bold py-3 rounded-full text-[14px] mb-2 disabled:opacity-50"
           >
-            請求書を表示・印刷
+            {pdfLoading ? 'PDF生成中...' : '📄 PDFをダウンロード'}
+          </button>
+          <button
+            onClick={openInvoiceHTML}
+            className="w-full bg-white border border-gray-300 text-gray-600 font-bold py-3 rounded-full text-[13px] mb-2"
+          >
+            ブラウザでプレビュー
           </button>
           <button onClick={() => window.close()} className="w-full bg-[#06C755] text-white font-bold py-3 rounded-full text-[15px]">
             LINEに戻る

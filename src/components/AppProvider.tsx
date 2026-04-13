@@ -1,12 +1,12 @@
 'use client';
 
 import { useReducer, useEffect, useState } from 'react';
-import { AppContext, appReducer, getInitialState, getEmptyState, loadFromStorage } from '@/lib/store';
+import { AppContext, appReducer, getEmptyState, loadFromStorage } from '@/lib/store';
 import { loadAllFromSupabase } from '@/lib/supabase-db';
 import { createSupabaseBrowserClient } from '@/lib/auth';
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, undefined, getInitialState);
+  const [state, dispatch] = useReducer(appReducer, undefined, getEmptyState);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {

@@ -87,7 +87,11 @@ export default function Home() {
           )}
         </div>
         <p className="text-[11px] text-gray-500 mt-2">
-          💡 このペースなら<strong style={{ color: safetyColor }}>{safetyText}（{months}ヶ月以上）</strong>
+          {months === 99 ? (
+            <span className="text-gray-400">経費データ不足</span>
+          ) : (
+            <>💡 このペースなら<strong style={{ color: safetyColor }}>{safetyText}（{months}ヶ月以上）</strong></>
+          )}
         </p>
       </div>
 

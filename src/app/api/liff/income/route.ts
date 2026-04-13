@@ -26,8 +26,9 @@ export async function POST(req: NextRequest) {
     }
     const lineUserId = payload.lineUserId;
 
-    if (!client || !amount) {
-      return NextResponse.json({ ok: false, error: '必須項目が不足' }, { status: 400 });
+    const parsedAmount = Number(amount);
+    if (!client || !parsedAmount || parsedAmount <= 0 || parsedAmount > 999999999) {
+      return NextResponse.json({ ok: false, error: '必須項目が不足、または金額が不正です' }, { status: 400 });
     }
 
     const user = await getLineUser(lineUserId);
@@ -36,14 +37,14 @@ export async function POST(req: NextRequest) {
     }
 
     const description = memo ? `${client} ${memo}` : `${client}からの入金`;
-    await saveIncomeTransaction(user.company_id, amount, client, description);
+    await saveIncomeTransaction(user.company_id, parsedAmount, client, description);
 
     const summary = await getMonthlyExpenseSummary(user.company_id);
-    const monthlyIncome = summary.totalIncome + amount;
+    const monthlyIncome = summary.totalIncome + parsedAmount;
 
     await pushMessage(lineUserId, [{
       type: 'flex',
-      altText: `入金 ¥${amount.toLocaleString()} を記録しました`,
+      altText: `入金 ¥${parsedAmount.toLocaleString()} を記録しました`,
       contents: {
         type: 'bubble',
         header: {
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
               type: 'box', layout: 'horizontal',
               contents: [
                 { type: 'text', text: '入金額', size: 'sm', color: '#888888', flex: 1 },
-                { type: 'text', text: `¥${amount.toLocaleString()}`, size: 'lg', weight: 'bold', align: 'end', flex: 2 },
+                { type: 'text', text: `¥${parsedAmount.toLocaleString()}`, size: 'lg', weight: 'bold', align: 'end', flex: 2 },
               ],
             },
             {

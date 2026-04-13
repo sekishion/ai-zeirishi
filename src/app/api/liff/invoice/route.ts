@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     const description = items?.length > 0
       ? `${client} 請求書 (${items.map((i: { name: string }) => i.name).join(', ')})`
       : `${client} 請求書`;
-    await saveIncomeTransaction(user.company_id, subtotal, client, description);
+    await saveIncomeTransaction(user.company_id, total, client, description);
 
     // invoices テーブルに保存
     try {

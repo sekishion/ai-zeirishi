@@ -7,7 +7,14 @@
 
 import * as crypto from 'crypto';
 
-const SECRET = process.env.LIFF_TOKEN_SECRET || process.env.LINE_CHANNEL_SECRET || 'fallback-not-secure';
+function getSecret(): string {
+  const secret = process.env.LIFF_TOKEN_SECRET || process.env.LINE_CHANNEL_SECRET;
+  if (!secret) {
+    throw new Error('LIFF_TOKEN_SECRET or LINE_CHANNEL_SECRET must be set');
+  }
+  return secret;
+}
+const SECRET: string = getSecret();
 const TOKEN_TTL_MS = 5 * 60 * 1000; // 5分
 
 export interface LiffTokenPayload {

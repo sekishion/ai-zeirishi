@@ -78,7 +78,9 @@ export default function CashflowPage() {
       <div className="bg-white rounded-[14px] border border-gray-200 p-5 text-center">
         <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-2">資金の安全度</p>
         <p className={`text-[36px] font-black ${safetyColor}`}>{safetyLabel}</p>
-        <p className={`text-[14px] font-bold ${safetyColor} mt-1`}>あと{months}ヶ月以上</p>
+        <p className={`text-[14px] font-bold ${months === 99 ? 'text-gray-400' : safetyColor} mt-1`}>
+          {months === 99 ? '経費データ不足' : `あと${months}ヶ月以上`}
+        </p>
         <div className="mt-3 mx-auto w-4/5 h-2.5 bg-gray-200 rounded-full overflow-hidden">
           <div className={`h-full ${safetyBg} rounded-full transition-all`} style={{ width: `${safetyPct}%` }} />
         </div>

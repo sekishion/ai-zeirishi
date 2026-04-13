@@ -17,8 +17,8 @@ export default function OnboardingPage() {
   const handleComplete = () => {
     dispatch({
       type: 'COMPLETE_SETUP',
-      companyName: companyName || '田中建設 株式会社',
-      ownerName: ownerName || '田中',
+      companyName: companyName || '',
+      ownerName: ownerName || '',
       companyInfo: {
         industry: industry || '建設業',
         employeeCount: 10,
@@ -173,7 +173,7 @@ export default function OnboardingPage() {
               ダッシュボードを見る
             </button>
             <button
-              onClick={handleComplete}
+              onClick={() => router.push('/')}
               className="w-full py-3 text-gray-400 text-[13px] mt-2"
             >
               あとで設定する

@@ -2,7 +2,7 @@
 
 import { useApp } from '@/lib/store';
 import { useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 
 interface CompanyForm {
@@ -15,7 +15,7 @@ interface CompanyForm {
   bank_account: string;
 }
 
-export default function SettingsPage() {
+function SettingsContent() {
   const { state, dispatch } = useApp();
   const searchParams = useSearchParams();
   const freeeConnected = searchParams.get('freee_connected') === 'true';
@@ -370,5 +370,13 @@ export default function SettingsPage() {
 
       <div className="h-4" />
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><p className="text-gray-400">読み込み中...</p></div>}>
+      <SettingsContent />
+    </Suspense>
   );
 }

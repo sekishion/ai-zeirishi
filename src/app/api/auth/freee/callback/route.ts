@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCodeForToken, getFreeeCompanies } from '@/lib/freee';
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,7 +9,7 @@ const supabase = createClient(
 );
 
 // GET /api/auth/freee/callback — freee OAuth コールバック
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
   const state = searchParams.get('state');
@@ -22,13 +23,48 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/settings?freee_error=missing_params', request.url));
   }
 
-  // stateからcompanyIdを復元
+  // Supabase Auth チェック（ログイン済みユーザーのみ許可）
+  const sb = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: () => { /* read-only */ },
+      },
+    }
+  );
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) {
+    return NextResponse.redirect(new URL('/settings?freee_error=unauthorized', request.url));
+  }
+
+  // stateからcompanyIdとnonceを復元
   let companyId: string;
+  let stateNonce: string;
   try {
     const decoded = JSON.parse(Buffer.from(state, 'base64url').toString());
     companyId = decoded.companyId;
+    stateNonce = decoded.nonce;
   } catch {
     return NextResponse.redirect(new URL('/settings?freee_error=invalid_state', request.url));
+  }
+
+  // CSRF保護: cookieのnonceとstateのnonceを比較
+  const cookieNonce = request.cookies.get('freee_oauth_nonce')?.value;
+  if (!cookieNonce || !stateNonce || cookieNonce !== stateNonce) {
+    return NextResponse.redirect(new URL('/settings?freee_error=invalid_nonce', request.url));
+  }
+
+  // ログイン中のユーザーがこのcompanyIdを所有しているか確認
+  const { data: company } = await supabase
+    .from('companies')
+    .select('id')
+    .eq('id', companyId)
+    .eq('owner_id', user.id)
+    .maybeSingle();
+  if (!company) {
+    return NextResponse.redirect(new URL('/settings?freee_error=not_owner', request.url));
   }
 
   try {
@@ -57,9 +93,14 @@ export async function GET(request: Request) {
         onConflict: 'company_id,platform',
       });
 
-    return NextResponse.redirect(new URL('/settings?freee_connected=true', request.url));
+    // nonce cookieを削除
+    const response = NextResponse.redirect(new URL('/settings?freee_connected=true', request.url));
+    response.cookies.delete('freee_oauth_nonce');
+    return response;
   } catch (err) {
     console.error('freee OAuth error:', err);
-    return NextResponse.redirect(new URL('/settings?freee_error=token_failed', request.url));
+    const response = NextResponse.redirect(new URL('/settings?freee_error=token_failed', request.url));
+    response.cookies.delete('freee_oauth_nonce');
+    return response;
   }
 }

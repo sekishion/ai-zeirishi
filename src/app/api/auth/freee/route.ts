@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { buildFreeeAuthUrl } from '@/lib/freee';
-import { createClient } from '@supabase/supabase-js';
 
 // GET /api/auth/freee — freee OAuth認可開始
 export async function GET(request: Request) {
@@ -11,12 +10,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'company_id is required' }, { status: 400 });
   }
 
-  // stateにcompanyIdを埋め込み（CSRF対策 + 認可後の紐づけ用）
+  // stateにcompanyIdとnonceを埋め込み（CSRF対策 + 認可後の紐づけ用）
+  const nonce = crypto.randomUUID();
   const state = Buffer.from(JSON.stringify({
     companyId,
-    nonce: crypto.randomUUID(),
+    nonce,
   })).toString('base64url');
 
   const authUrl = buildFreeeAuthUrl(state);
-  return NextResponse.redirect(authUrl);
+  const response = NextResponse.redirect(authUrl);
+
+  // nonceをhttpOnly cookieに保存（CSRF保護用、5分で失効）
+  response.cookies.set('freee_oauth_nonce', nonce, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 300, // 5分
+    path: '/',
+  });
+
+  return response;
 }

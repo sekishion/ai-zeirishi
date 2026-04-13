@@ -47,10 +47,11 @@ export default function CashflowPage() {
   const chartData = [...actualBars.slice(-3), ...forecastBars];
   const maxVal = Math.max(...chartData.map(d => d.value), 1);
 
-  // 今後の入出金予定（金額が大きい順に上位5件）
+  // 今後の入出金予定（本日以降の取引を日付昇順で上位5件）
+  const todayStr = new Date().toISOString().split('T')[0];
   const upcomingTx = state.transactions
-    .slice()
-    .sort((a, b) => b.amount - a.amount)
+    .filter(t => t.date >= todayStr)
+    .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 5);
 
   const level = state.cashForecast.level;
@@ -117,22 +118,26 @@ export default function CashflowPage() {
       <div className="bg-white rounded-[14px] border border-gray-200 p-4">
         <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-3">今後の入出金予定</p>
         <div className="space-y-0">
-          {upcomingTx.map((tx) => (
-            <div key={tx.id} className="flex items-center gap-3 py-3 border-b border-gray-100 last:border-b-0">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
-                tx.type === 'income' ? 'bg-emerald-50 text-[#059669]' : 'bg-red-50 text-[#DC2626]'
-              }`}>
-                {tx.type === 'income' ? '↓' : '↑'}
+          {upcomingTx.length === 0 ? (
+            <p className="text-[13px] text-gray-400 text-center py-4">予定なし</p>
+          ) : (
+            upcomingTx.map((tx) => (
+              <div key={tx.id} className="flex items-center gap-3 py-3 border-b border-gray-100 last:border-b-0">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${
+                  tx.type === 'income' ? 'bg-emerald-50 text-[#059669]' : 'bg-red-50 text-[#DC2626]'
+                }`}>
+                  {tx.type === 'income' ? '↓' : '↑'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-gray-800 truncate">{tx.counterparty}</p>
+                  <p className="text-[11px] text-gray-500">{tx.date.slice(5).replace('-', '/')}</p>
+                </div>
+                <p className={`text-[14px] font-bold ${tx.type === 'income' ? 'text-[#059669]' : 'text-[#1A3A5C]'}`}>
+                  {tx.type === 'income' ? '+' : '-'}{formatAmount(tx.amount)}
+                </p>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium text-gray-800 truncate">{tx.counterparty}</p>
-                <p className="text-[11px] text-gray-500">{tx.date.slice(5).replace('-', '/')}</p>
-              </div>
-              <p className={`text-[14px] font-bold ${tx.type === 'income' ? 'text-[#059669]' : 'text-[#1A3A5C]'}`}>
-                {tx.type === 'income' ? '+' : '-'}{formatAmount(tx.amount)}
-              </p>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

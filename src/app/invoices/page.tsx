@@ -61,7 +61,7 @@ export default function InvoicesPage() {
     return (
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center gap-3">
-          <Link href="/analysis" className="text-[#1A3A5C] p-1">
+          <Link href="/" className="text-[#1A3A5C] p-1">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
           </Link>
           <h1 className="text-[17px] font-bold text-[#1A3A5C] flex-1">請求書</h1>
@@ -142,14 +142,7 @@ export default function InvoicesPage() {
               placeholder="会社名を入力"
               className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-[14px] outline-none focus:border-[#1A3A5C]"
             />
-            {/* Quick select */}
-            <div className="flex gap-2 mt-2">
-              {['ABC建設', '山田工務店', 'PQR商事'].map(c => (
-                <button key={c} onClick={() => setClient(c)} className="text-[12px] px-3 py-1 bg-blue-50 text-blue-600 rounded-full border border-blue-200">
-                  {c}
-                </button>
-              ))}
-            </div>
+            {/* Quick select - populated from transaction counterparties when available */}
           </div>
 
           {/* Items */}

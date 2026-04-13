@@ -15,16 +15,48 @@ export default function Home() {
   const expense = r.pl.expenses;
   const balance = state.cashForecast.projectedBalance;
 
-  const profitChange = r.pl.revenueChange !== undefined ? r.pl.revenueChange : 0;
+  const revenueChange = r.pl.revenueChange !== undefined ? r.pl.revenueChange : 0;
   const profitPct = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
 
-  const bars = [
-    { label: '先々月', v: Math.round(balance * 0.9 / 10000), real: true },
-    { label: '先月', v: Math.round(balance * 0.95 / 10000), real: true },
-    { label: '今月', v: Math.round(balance / 10000), real: true },
-    { label: '来月', v: Math.round(balance * 1.06 / 10000), real: false },
-    { label: '再来月', v: Math.round(balance * 1.12 / 10000), real: false },
-  ];
+  // Compute actual monthly balances from transactions grouped by month
+  const monthlyBalances = new Map<string, { income: number; expense: number }>();
+  state.transactions.forEach(t => {
+    const m = t.date.slice(0, 7);
+    const cur = monthlyBalances.get(m) || { income: 0, expense: 0 };
+    if (t.type === 'income') cur.income += t.amount;
+    else cur.expense += t.amount;
+    monthlyBalances.set(m, cur);
+  });
+  const sortedMonthKeys = Array.from(monthlyBalances.keys()).sort();
+  let cumulBalance = 0;
+  const actualBars = sortedMonthKeys.map(m => {
+    const d = monthlyBalances.get(m)!;
+    cumulBalance += d.income - d.expense;
+    const mNum = parseInt(m.split('-')[1]);
+    return { label: `${mNum}月`, v: Math.round(Math.max(0, cumulBalance) / 10000), real: true };
+  });
+
+  // Compute month-over-month change from actual transaction data
+  const currentMonthKey = sortedMonthKeys[sortedMonthKeys.length - 1];
+  const prevMonthKey = sortedMonthKeys.length >= 2 ? sortedMonthKeys[sortedMonthKeys.length - 2] : undefined;
+  const currentMonthNet = currentMonthKey ? (() => { const d = monthlyBalances.get(currentMonthKey)!; return d.income - d.expense; })() : 0;
+  const prevMonthNet = prevMonthKey ? (() => { const d = monthlyBalances.get(prevMonthKey)!; return d.income - d.expense; })() : 0;
+  const hasEnoughMonths = sortedMonthKeys.length >= 2;
+  const monthOverMonthDiff = hasEnoughMonths ? currentMonthNet - prevMonthNet : 0;
+
+  // Forecast bars (simple avg projection)
+  const avgNet = sortedMonthKeys.length > 0
+    ? Array.from(monthlyBalances.values()).reduce((s, v) => s + v.income - v.expense, 0) / sortedMonthKeys.length
+    : 0;
+  const lastMonthNum = sortedMonthKeys.length > 0
+    ? parseInt(sortedMonthKeys[sortedMonthKeys.length - 1].split('-')[1])
+    : new Date().getMonth() + 1;
+  const forecastBars = [1, 2].map(i => {
+    const mNum = (lastMonthNum + i) > 12 ? (lastMonthNum + i - 12) : (lastMonthNum + i);
+    return { label: `${mNum}月`, v: Math.round(Math.max(0, cumulBalance + avgNet * i) / 10000), real: false };
+  });
+
+  const bars = [...actualBars.slice(-3), ...forecastBars];
   const mx = Math.max(...bars.map(b => b.v), 1);
 
   const safetyColor = months >= 6 ? '#059669' : months >= 3 ? '#D97706' : '#DC2626';
@@ -44,9 +76,15 @@ export default function Home() {
         <p className="text-[11px] text-gray-500">手元資金</p>
         <p className="text-[28px] font-black text-[#1A3A5C] leading-tight">{formatAmount(balance)}</p>
         <div className="mt-2">
-          <span className="inline-block bg-emerald-50 text-emerald-600 text-[11px] font-bold px-3 py-1 rounded-lg">
-            前月比 +{formatAmount(Math.round(balance * 0.05))}
-          </span>
+          {hasEnoughMonths ? (
+            <span className={`inline-block text-[11px] font-bold px-3 py-1 rounded-lg ${monthOverMonthDiff >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+              前月比 {monthOverMonthDiff >= 0 ? '+' : ''}{formatAmount(monthOverMonthDiff)}
+            </span>
+          ) : (
+            <span className="inline-block bg-gray-50 text-gray-500 text-[11px] font-bold px-3 py-1 rounded-lg">
+              データ蓄積中
+            </span>
+          )}
         </div>
         <p className="text-[11px] text-gray-500 mt-2">
           💡 このペースなら<strong style={{ color: safetyColor }}>{safetyText}（{months}ヶ月以上）</strong>
@@ -58,8 +96,8 @@ export default function Home() {
         <div className="bg-white rounded-[14px] border border-gray-200 p-3 text-center">
           <p className="text-[11px] text-gray-500">売上</p>
           <p className="text-[16px] font-black text-[#1A3A5C]">{formatAmount(revenue)}</p>
-          <p className={`text-[12px] font-bold ${profitChange >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-            {profitChange >= 0 ? '+' : ''}{Math.round(profitChange * 100)}%
+          <p className={`text-[12px] font-bold ${revenueChange >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+            {revenueChange >= 0 ? '+' : ''}{Math.round(revenueChange * 100)}%
           </p>
         </div>
         <div className="bg-white rounded-[14px] border border-gray-200 p-3 text-center">
@@ -71,8 +109,8 @@ export default function Home() {
         </div>
         <div className="bg-white rounded-[14px] border border-gray-200 p-3 text-center">
           <p className="text-[11px] text-gray-500">未入金</p>
-          <p className="text-[16px] font-black text-red-600">{formatAmount(0)}</p>
-          <p className="text-[12px] font-bold text-amber-600">0件</p>
+          <p className="text-[16px] font-black text-gray-400">&mdash;</p>
+          <p className="text-[12px] font-bold text-gray-400">準備中</p>
         </div>
       </div>
 

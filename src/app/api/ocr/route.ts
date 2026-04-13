@@ -1,10 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { INDUSTRY_RULES } from '@/lib/grounding';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(req: NextRequest) {
+  // 認証必須（コスト爆発・DoS防止）
+  const sb = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => req.cookies.getAll(),
+        setAll: () => { /* read-only */ },
+      },
+    }
+  );
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 });
+  }
+
   try {
     const { image, industry } = await req.json();
 

@@ -90,7 +90,7 @@ export function getEmptyState(): AppState {
     accuracyLogs: [],
     report: { month: '', createdAt: '', summary: '', pl: { revenue: 0, revenueChange: 0, expenses: 0, expensesChange: 0, profit: 0, profitChange: 0, expenseBreakdown: [] }, bs: { assets: [], liabilities: [], totalAssets: 0, totalLiabilities: 0, netAssets: 0 }, cashflow: { inflow: 0, outflow: 0, net: 0, message: '' }, aiComments: [] },
     reportList: [],
-    filings: mockFilings,
+    filings: [],
     expenseRequests: [],
     documents: [],
     companyName: '',
@@ -100,7 +100,11 @@ export function getEmptyState(): AppState {
   };
 }
 
+/** @deprecated Use getEmptyState() instead. Only for development/testing. */
 export function getInitialState(): AppState {
+  if (process.env.NODE_ENV !== 'development') {
+    return getEmptyState();
+  }
   return {
     companyId: null,
     transactions: mockTransactions,
@@ -196,9 +200,9 @@ function generateReport(transactions: Transaction[]): MonthlyReport {
     bs: (() => {
       const allIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
       const allExpense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-      const cashBalance = 10844240 + allIncome - allExpense - (7800120 - 6220180); // 初期残高 + 差分
+      const cashBalance = Math.max(0, allIncome - allExpense);
       const totalAssets = cashBalance;
-      const totalLiabilities = 1255000;
+      const totalLiabilities = 0;
       return {
         assets: [{ name: '現金・預金', amount: cashBalance }],
         liabilities: [{ name: '未払金等', amount: totalLiabilities }],
@@ -263,13 +267,23 @@ function recalculate(state: AppState): AppState {
       { label: '利益', value: formatMan(profit), change: profitChange >= 0 ? `+${(profitChange * 100).toFixed(1)}%` : `${(profitChange * 100).toFixed(1)}%`, changeType: profit > 0 ? 'positive' : 'negative' },
       { label: '手元資金', value: formatMan(lastBalance), changeType: 'neutral' },
     ],
-    cashForecast: {
-      ...state.cashForecast,
-      message: expense > 0
-        ? `今のペースなら、あと${Math.floor(lastBalance / (expense || 1))}ヶ月分の運転資金があります。`
-        : '経費データがまだありません。',
-      monthsRemaining: expense > 0 ? Math.floor(lastBalance / expense) : 99,
-    },
+    cashForecast: (() => {
+      const monthsRemaining = expense > 0 ? Math.floor(lastBalance / expense) : 99;
+      const fixedCosts = Math.round(expense * 0.4);
+      const level: 'safe' | 'caution' | 'warning' | 'critical' =
+        monthsRemaining >= 6 ? 'safe' :
+        monthsRemaining >= 3 ? 'caution' :
+        monthsRemaining >= 1 ? 'warning' : 'critical';
+      return {
+        projectedBalance: lastBalance,
+        fixedCosts,
+        monthsRemaining,
+        level,
+        message: expense > 0
+          ? `今のペースなら、あと${monthsRemaining}ヶ月分の運転資金があります。`
+          : '経費データがまだありません。',
+      };
+    })(),
     notices: [
       { id: 'n-001', message: `${monthLabel}の帳簿づけ、${currentTx.length}件中${currentTx.length - pendingCount}件を自動処理しました`, type: 'info', date: new Date().toISOString().split('T')[0] },
       ...(pendingCount > 0 ? [{ id: 'n-002', message: `${pendingCount}件、確認をお願いしたい取引があります`, type: 'action' as const, link: '/pending', date: new Date().toISOString().split('T')[0] }] : []),
@@ -440,13 +454,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'RESET_DATA': {
-      newState = getInitialState();
+      newState = getEmptyState();
       clearStorage();
       return newState;
     }
 
     case 'LOAD_STATE':
-      return action.state;
+      return recalculate({ ...getEmptyState(), ...action.state });
 
     case 'RECALCULATE':
       newState = recalculate(state);

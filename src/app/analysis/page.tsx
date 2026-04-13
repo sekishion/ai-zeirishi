@@ -32,7 +32,7 @@ export default function AnalysisPage() {
       {/* Navigation cards */}
       <div className="space-y-2">
         {[
-          { href: '/reports', icon: '📊', title: '月次レポート', desc: `3月: 売上${formatAmount(r.pl.revenue)} / 利益${formatAmount(r.pl.profit)}`, color: 'border-l-blue-500' },
+          { href: '/reports', icon: '📊', title: '月次レポート', desc: `${r.month ? `${parseInt(r.month.split('-')[1])}月` : '—'}: 売上${formatAmount(r.pl.revenue)} / 利益${formatAmount(r.pl.profit)}`, color: 'border-l-blue-500' },
           { href: '/cashflow', icon: '💰', title: '資金繰り予測', desc: `あと${months}ヶ月分の運転資金。${state.cashForecast.level === 'safe' ? '安全です' : '注意が必要です'}`, color: 'border-l-emerald-500' },
           { href: '/simulator', icon: '🔮', title: 'シミュレーション', desc: 'What-if分析、決算予測、節税チェック', color: 'border-l-purple-500' },
           { href: '/invoices', icon: '📄', title: '請求書・入金管理', desc: '未入金の追跡と催促', color: 'border-l-amber-500' },

@@ -43,7 +43,7 @@ export default function FilingPage() {
           <div className="bg-[#1A3A5C] h-2 rounded-full transition-all" style={{ width: `${progress}%` }} />
         </div>
         <p className="text-[12px] text-gray-400">
-          申告期限: <strong className="text-gray-600">2026年5月31日</strong>（あと58日）
+          申告期限: <strong className="text-gray-600">2026年5月31日</strong>（あと{Math.max(0, Math.ceil((new Date('2026-05-31').getTime() - Date.now()) / (1000 * 60 * 60 * 24)))}日）
         </p>
       </div>
 

@@ -23,7 +23,7 @@ export default function Timeline() {
     return months;
   }, [state.transactions]);
 
-  const [selectedMonth, setSelectedMonth] = useState(availableMonths[0] || '2026-03');
+  const [selectedMonth, setSelectedMonth] = useState(availableMonths[0] || new Date().toISOString().slice(0, 7));
 
   // 選択月のトランザクションをフィルタ
   const monthTransactions = useMemo(() => {

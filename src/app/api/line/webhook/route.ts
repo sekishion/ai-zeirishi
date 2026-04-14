@@ -231,9 +231,16 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
 - 10万円以上の備品・機器 → needsReview: true（少額減価償却資産 or 固定資産の判定）
 - 飲食店レシート1人あたり¥10,000超 → 交際費。¥10,000以下 → 会議費
 
+## 税率混在レシートの処理（重要）
+日本のレシートは8%対象と10%対象の小計を分けて印字していることが多い。
+スーパー・コンビニ等で食品(8%)と日用品(10%)が混在している場合:
+- レシートに「8%対象 ¥XXX」「10%対象 ¥YYY」の記載があれば、それぞれの金額を読み取る
+- 税率別の金額が読めたら taxBreakdown に記載する
+- 読めない場合は全体金額だけ返し、dominant な税率を isReducedTax で示す
+
 ## 出力（JSON のみ返すこと）
 {
-  "amount": 税込金額（数値のみ。読めなければnull）,
+  "amount": 税込合計金額（数値のみ。読めなければnull）,
   "store": "店名",
   "date": "YYYY-MM-DD（読めなければnull）",
   "items": "主な品目（短く）",
@@ -243,7 +250,8 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
   "isReducedTax": false,
   "isWithholding": false,
   "needsReview": false,
-  "reviewReason": "確認が必要な理由（needsReview=trueの場合のみ）"
+  "reviewReason": "確認が必要な理由（needsReview=trueの場合のみ）",
+  "taxBreakdown": null or { "rate8Amount": 8%対象の税込金額, "rate10Amount": 10%対象の税込金額 }
 }
 
 ## confidence の基準
@@ -268,12 +276,12 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
     return;
   }
 
-  let receipt: ReceiptData;
+  // パースと税率分割
+  let receipts: ReceiptData[] = [];
   try {
     const parsed = JSON.parse(jsonMatch[0]);
-    // category が無い/空 のときは雑費にデフォルトせず、needsReview: true で受ける
     const hasCategory = parsed.category && String(parsed.category).trim().length > 0;
-    receipt = {
+    const baseReceipt: ReceiptData = {
       amount: parsed.amount ? Number(parsed.amount) : null,
       store: parsed.store || null,
       date: parsed.date || null,
@@ -286,6 +294,27 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
       isReducedTax: parsed.isReducedTax === true,
       isWithholding: parsed.isWithholding === true,
     };
+
+    // 税率混在レシートの分割: taxBreakdown があれば2取引に分ける
+    const tb = parsed.taxBreakdown;
+    if (tb && tb.rate8Amount > 0 && tb.rate10Amount > 0) {
+      // 8%対象取引
+      receipts.push({
+        ...baseReceipt,
+        amount: Number(tb.rate8Amount),
+        items: baseReceipt.items ? `${baseReceipt.items}（軽減税率8%分）` : '軽減税率8%対象',
+        isReducedTax: true,
+      });
+      // 10%対象取引
+      receipts.push({
+        ...baseReceipt,
+        amount: Number(tb.rate10Amount),
+        items: baseReceipt.items ? `${baseReceipt.items}（標準税率10%分）` : '標準税率10%対象',
+        isReducedTax: false,
+      });
+    } else {
+      receipts = [baseReceipt];
+    }
   } catch {
     await replyMessage(replyToken, [
       textMessage('レシートの解析に失敗しました。もう一度送ってください 📸'),
@@ -293,17 +322,6 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
     return;
   }
 
-  // 2.5. 学習済みパターンがあれば上書き（AIより過去の修正を優先）
-  if (user.company_id && receipt.store) {
-    const learned = await predictFromLearned(user.company_id, receipt.store, 'expense');
-    if (learned && learned.confidence > receipt.confidence) {
-      receipt.category = learned.category;
-      receipt.categoryLabel = learned.categoryLabel;
-      receipt.confidence = learned.confidence;
-    }
-  }
-
-  // 3. 重複チェック（同じ店名・金額・日付の取引がないか）
   if (!user.company_id) {
     await replyMessage(replyToken, [
       textMessage('エラーが発生しました。もう一度友だち追加をお試しください。'),
@@ -311,22 +329,57 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
     return;
   }
 
-  const receiptDate = receipt.date || new Date().toISOString().split('T')[0];
-  const isDuplicate = await checkDuplicateReceipt(user.company_id, receipt.store, receipt.amount, receiptDate);
-  if (isDuplicate) {
-    receipt.needsReview = true;
+  // 各取引を処理（税率分割の場合は2件）
+  const savedTxIds: string[] = [];
+  let lastReceipt = receipts[0];
+  let lastImageUploadFailed = false;
+  let lastIsDuplicate = false;
+
+  for (const receipt of receipts) {
+    // 学習済みパターンがあれば上書き（AIより過去の修正を優先）
+    if (receipt.store) {
+      const learned = await predictFromLearned(user.company_id, receipt.store, 'expense');
+      if (learned && learned.confidence > receipt.confidence) {
+        receipt.category = learned.category;
+        receipt.categoryLabel = learned.categoryLabel;
+        receipt.confidence = learned.confidence;
+      }
+    }
+
+    // 重複チェック
+    const receiptDate = receipt.date || new Date().toISOString().split('T')[0];
+    const isDuplicate = await checkDuplicateReceipt(user.company_id, receipt.store, receipt.amount, receiptDate);
+    if (isDuplicate) {
+      receipt.needsReview = true;
+      lastIsDuplicate = true;
+    }
+
+    // DB保存（画像は1件目のみ添付）
+    const imgBuf = savedTxIds.length === 0 ? imageBuffer : undefined;
+    const { txId, imageUploadFailed } = await saveReceiptTransaction(user.company_id, receipt, imgBuf);
+    savedTxIds.push(txId);
+    lastReceipt = receipt;
+    if (imageUploadFailed) lastImageUploadFailed = true;
   }
 
-  // 4. DBに保存（画像も Storage に保存）
-  const { txId, imageUploadFailed } = await saveReceiptTransaction(user.company_id, receipt, imageBuffer);
+  const txId = savedTxIds[0];
+  const receipt = lastReceipt;
+  const isDuplicate = lastIsDuplicate;
+  const imageUploadFailed = lastImageUploadFailed;
 
   // 5. 同カテゴリの今月合計を取得
   const monthlyTotal = await getCategoryMonthlyTotal(user.company_id, receipt.category);
 
+  // 税率分割された場合の合計金額表示
+  const totalAmount = receipts.reduce((s, r) => s + (r.amount || 0), 0);
+  const wasSplit = receipts.length > 1;
+
   // 6. Flex Messageカードで返信
-  const amountStr = receipt.amount ? yen(receipt.amount) : '金額不明';
+  const amountStr = wasSplit ? yen(totalAmount) : (receipt.amount ? yen(receipt.amount) : '金額不明');
   const storeStr = receipt.store || '不明';
-  const categoryStr = receipt.categoryLabel || receipt.category;
+  const categoryStr = wasSplit
+    ? receipts.map(r => `${r.categoryLabel}(${r.isReducedTax ? '8%' : '10%'})`).join(' + ')
+    : (receipt.categoryLabel || receipt.category);
   const newTotal = monthlyTotal.total + (receipt.amount || 0);
   const newCount = monthlyTotal.count + 1;
 
@@ -337,6 +390,9 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
   }
   if (isDuplicate) {
     warnings.push({ type: 'text' as const, text: `⚠️ 同じ店名・金額の取引が今日既に登録されています。重複の場合はLINEで「削除 ${txId}」と送ってください。`, size: 'xs' as const, color: '#ff6b6b', margin: 'sm' as const, wrap: true as const });
+  }
+  if (wasSplit) {
+    warnings.push({ type: 'text' as const, text: `📋 税率混在のため2取引に分割しました: 8%分 ${yen(receipts[0].amount || 0)} + 10%分 ${yen(receipts[1].amount || 0)}`, size: 'xs' as const, color: '#2563EB', margin: 'sm' as const, wrap: true as const });
   }
   if (imageUploadFailed) {
     warnings.push({ type: 'text' as const, text: '⚠️ レシート画像の保存に失敗しました。再送をお願いします。', size: 'xs' as const, color: '#ff6b6b', margin: 'sm' as const, wrap: true as const });

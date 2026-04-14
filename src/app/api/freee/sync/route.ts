@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       offset += limit;
     } while (offset < totalCount);
 
-    // 既存のfreee取引を取得（重複チェック用）
+    // 既存のfreee取引を取得（freee同士の重複チェック用）
     const { data: existingTx } = await supabase
       .from('transactions')
       .select('external_id')
@@ -124,11 +124,53 @@ export async function POST(request: NextRequest) {
 
     const existingIds = new Set((existingTx || []).map(t => t.external_id));
 
-    // 新規取引のみ挿入
+    // LINE経由の取引を取得（freee↔LINE クロスチェック用）
+    const { data: lineTx } = await supabase
+      .from('transactions')
+      .select('id, date, amount, type, counterparty, external_id')
+      .eq('company_id', companyId)
+      .is('synced_from', null)  // LINE経由（synced_fromがnull）
+      .is('deleted_at', null);
+
+    const lineTransactions = lineTx || [];
+
+    // 新規取引のみ挿入（freee同士 + freee↔LINE の両方でチェック）
     const newDeals = allDeals.filter(d => !existingIds.has(String(d.id)));
-    const transactions = newDeals.map(deal => {
+    let skippedAsLineDuplicate = 0;
+    const transactions: Array<Record<string, unknown>> = [];
+
+    for (const deal of newDeals) {
       const tx = convertFreeeDealToTransaction(deal);
-      return {
+
+      // freee↔LINE クロスチェック: 日付±1日 × 金額一致 × 同タイプ でマッチ
+      const matchedLineTx = lineTransactions.find(lt => {
+        if (lt.type !== tx.type) return false;
+        if (Number(lt.amount) !== tx.amount) return false;
+        // 日付±1日
+        const ltDate = new Date(lt.date as string).getTime();
+        const txDate = new Date(tx.date).getTime();
+        return Math.abs(ltDate - txDate) <= 86400000; // 1日 = 86400000ms
+      });
+
+      if (matchedLineTx && !matchedLineTx.external_id) {
+        // LINE取引にfreeeのexternal_idを紐付け（マージ）
+        await supabase
+          .from('transactions')
+          .update({
+            external_id: tx.externalId,
+            synced_from: 'freee_matched',
+          })
+          .eq('id', matchedLineTx.id);
+
+        // マッチ済みのLINE取引はリストから除外（同じものに2回マッチしない）
+        const idx = lineTransactions.indexOf(matchedLineTx);
+        if (idx >= 0) lineTransactions.splice(idx, 1);
+
+        skippedAsLineDuplicate++;
+        continue; // 新規insertしない
+      }
+
+      transactions.push({
         company_id: companyId,
         date: tx.date,
         description: tx.description,
@@ -142,8 +184,8 @@ export async function POST(request: NextRequest) {
         confidence: 1.0,
         external_id: tx.externalId,
         synced_from: 'freee',
-      };
-    });
+      });
+    }
 
     if (transactions.length > 0) {
       const { error: insertErr } = await supabase
@@ -169,7 +211,8 @@ export async function POST(request: NextRequest) {
       ok: true,
       synced: transactions.length,
       total: allDeals.length,
-      skipped: allDeals.length - transactions.length,
+      skipped: allDeals.length - transactions.length - skippedAsLineDuplicate,
+      matchedWithLine: skippedAsLineDuplicate,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown error';

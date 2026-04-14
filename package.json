@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.82.0",
     "@auth/supabase-adapter": "^1.11.1",
     "@google/generative-ai": "^0.24.1",
     "@line/bot-sdk": "^11.0.0",

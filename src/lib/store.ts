@@ -2,11 +2,6 @@
 
 import { createContext, useContext } from 'react';
 import type { Transaction, PendingItem, MonthlyReport, CashForecast, AIAccuracy, Filing, Notice, ReportListItem, MetricCardProps, ExpenseRequest, Document } from '@/types';
-import {
-  mockTransactions, mockPendingItems, mockDashboardMetrics,
-  mockCashForecast, mockNotices, mockAccuracy, mockReport,
-  mockReportList, mockFilings
-} from '@/data/mock';
 import { learnFromTransaction } from '@/lib/learning';
 
 export interface AppState {
@@ -97,41 +92,6 @@ export function getEmptyState(): AppState {
     ownerName: '',
     setupCompleted: false,
     companyInfo: { industry: '建設業', employeeCount: 1, annualRevenue: '', fiscalYearEnd: 3, capitalAmount: 0 },
-  };
-}
-
-/** @deprecated Use getEmptyState() instead. Only for development/testing. */
-export function getInitialState(): AppState {
-  if (process.env.NODE_ENV !== 'development') {
-    return getEmptyState();
-  }
-  return {
-    companyId: null,
-    transactions: mockTransactions,
-    pendingItems: mockPendingItems,
-    dashboardMetrics: mockDashboardMetrics,
-    cashForecast: mockCashForecast,
-    notices: mockNotices,
-    accuracyLogs: mockAccuracy,
-    report: mockReport,
-    reportList: mockReportList,
-    filings: mockFilings,
-    expenseRequests: [
-      { id: 'exp-001', submittedBy: '鈴木一郎', date: '2026-03-25', description: 'タクシー代 現場→事務所', amount: 3200, category: '旅費交通費', categoryLabel: '交通費', status: 'pending_approval', submittedAt: '2026-03-25T18:30:00' },
-      { id: 'exp-002', submittedBy: '佐藤花子', date: '2026-03-24', description: 'コンビニ 現場用飲料', amount: 1580, category: '福利厚生費', categoryLabel: '福利厚生', status: 'pending_approval', submittedAt: '2026-03-24T12:15:00' },
-      { id: 'exp-003', submittedBy: '鈴木一郎', date: '2026-03-20', description: '駐車場代', amount: 800, category: '旅費交通費', categoryLabel: '交通費', status: 'approved', submittedAt: '2026-03-20T17:00:00', reviewedAt: '2026-03-20T20:00:00' },
-    ],
-    documents: [],
-    companyName: '田中建設',
-    ownerName: '田中',
-    setupCompleted: false,
-    companyInfo: {
-      industry: '建設業',
-      employeeCount: 4,
-      annualRevenue: '3000万〜5000万',
-      fiscalYearEnd: 3,
-      capitalAmount: 3000000,
-    },
   };
 }
 

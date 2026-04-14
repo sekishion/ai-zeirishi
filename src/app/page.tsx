@@ -118,29 +118,36 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 資金繰り予測 */}
-      <div className="bg-white rounded-[14px] border border-gray-200 p-4">
-        <div className="flex justify-between items-center mb-2">
-          <p className="text-[12px] font-bold text-[#1A3A5C]">💰 資金繰り予測</p>
-          <Link href="/cashflow" className="text-[11px] text-blue-600">詳しく →</Link>
+      {/* 資金繰り予測（データがある場合のみ表示） */}
+      {bars.some(b => b.v > 0) ? (
+        <div className="bg-white rounded-[14px] border border-gray-200 p-4">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-[12px] font-bold text-[#1A3A5C]">💰 資金繰り予測</p>
+            <Link href="/cashflow" className="text-[11px] text-blue-600">詳しく →</Link>
+          </div>
+          <div className="flex items-end gap-[6px] h-[70px]">
+            {bars.map((b, i) => (
+              <div key={`${b.label}-${i}`} className="flex-1 flex flex-col items-center gap-[3px]">
+                <span className="text-[9px] font-bold text-[#1A3A5C]">{b.v}万</span>
+                <div
+                  className={`w-full rounded-t-[3px] ${b.real ? 'bg-[#1A3A5C]' : ''}`}
+                  style={{
+                    height: `${Math.max(2, (b.v / mx) * 50)}px`,
+                    ...(b.real ? {} : { border: '1.5px dashed #3B82F6', background: 'rgba(59,130,246,0.12)' }),
+                  }}
+                />
+                <span className="text-[9px] text-gray-500">{b.label}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 text-center mt-1">実線=実績 / 点線=AI予測</p>
         </div>
-        <div className="flex items-end gap-[6px] h-[70px]">
-          {bars.map(b => (
-            <div key={b.label} className="flex-1 flex flex-col items-center gap-[3px]">
-              <span className="text-[9px] font-bold text-[#1A3A5C]">{b.v}万</span>
-              <div
-                className={`w-full rounded-t-[3px] ${b.real ? 'bg-[#1A3A5C]' : ''}`}
-                style={{
-                  height: `${Math.max(2, (b.v / mx) * 50)}px`,
-                  ...(b.real ? {} : { border: '1.5px dashed #3B82F6', background: 'rgba(59,130,246,0.12)' }),
-                }}
-              />
-              <span className="text-[9px] text-gray-500">{b.label}</span>
-            </div>
-          ))}
+      ) : (
+        <div className="bg-white rounded-[14px] border border-gray-200 p-4 text-center">
+          <p className="text-[12px] font-bold text-[#1A3A5C] mb-1">💰 資金繰り予測</p>
+          <p className="text-[11px] text-gray-400">レシートを送るか取引を登録すると、ここに予測グラフが表示されます</p>
         </div>
-        <p className="text-[10px] text-gray-400 text-center mt-1">実線=実績 / 点線=AI予測</p>
-      </div>
+      )}
 
       {/* アラート */}
       {pendingCount > 0 && (

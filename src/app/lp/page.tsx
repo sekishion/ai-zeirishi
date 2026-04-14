@@ -106,7 +106,7 @@ function DashboardMockup() {
     <PhoneMockup caption="経営数字が一目でわかる">
       {/* App Header */}
       <div className="px-4 pt-3 pb-2 bg-white">
-        <p className="text-[10px] text-gray-400">田中建設</p>
+        <p className="text-[10px] text-gray-400">あなたの会社</p>
         <p className="text-[14px] font-black text-gray-900">ダッシュボード</p>
       </div>
       <div className="px-3 pb-4 bg-gray-50 space-y-2.5">
@@ -155,7 +155,7 @@ function ReportMockup() {
   return (
     <PhoneMockup caption="月次レポートが自動で届く">
       <div className="px-4 pt-3 pb-2 bg-white">
-        <p className="text-[10px] text-gray-400">田中建設</p>
+        <p className="text-[10px] text-gray-400">あなたの会社</p>
         <p className="text-[14px] font-black text-gray-900">3月のレポート</p>
       </div>
       <div className="px-3 pb-4 bg-gray-50 space-y-2.5">

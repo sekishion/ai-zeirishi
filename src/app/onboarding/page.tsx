@@ -14,17 +14,17 @@ export default function OnboardingPage() {
   const [ownerName, setOwnerName] = useState('');
   const [industry, setIndustry] = useState('');
 
-  const handleComplete = () => {
+  const handleComplete = (skipDetails = false) => {
     dispatch({
       type: 'COMPLETE_SETUP',
       companyName: companyName || '',
       ownerName: ownerName || '',
       companyInfo: {
-        industry: industry || '建設業',
-        employeeCount: 10,
-        annualRevenue: '1億',
+        industry: industry || 'その他',
+        employeeCount: skipDetails ? 1 : 1,
+        annualRevenue: '',
         fiscalYearEnd: 3,
-        capitalAmount: 10000000,
+        capitalAmount: 0,
       },
     });
     router.push('/');
@@ -167,13 +167,13 @@ export default function OnboardingPage() {
             </div>
 
             <button
-              onClick={handleComplete}
+              onClick={() => { handleComplete(); }}
               className="w-full py-4 bg-[#1A3A5C] text-white rounded-2xl text-[16px] font-bold"
             >
               ダッシュボードを見る
             </button>
             <button
-              onClick={() => router.push('/')}
+              onClick={() => { handleComplete(true); }}
               className="w-full py-3 text-gray-400 text-[13px] mt-2"
             >
               あとで設定する

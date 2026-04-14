@@ -186,7 +186,7 @@ async function handleReceiptImage(
 ) {
   // 1. 画像を取得
   const imageBuffer = await getImageContent(messageId);
-  console.log(`[Receipt] Image size: ${imageBuffer.length} bytes`);
+  // Image size logging removed (contained receipt metadata)
 
   // 2. Gemini でOCR
   const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -240,7 +240,7 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
   ]);
 
   const ocrText = result.response.text();
-  console.log(`[Receipt OCR] ${ocrText.substring(0, 300)}`);
+  // OCR result logging removed (contained financial data)
 
   const jsonMatch = ocrText.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
@@ -418,6 +418,14 @@ async function handleTextMessage(
         { label: '🏗️ 建設業', text: '建設業' },
         { label: '🍽️ 飲食業', text: '飲食業' },
         { label: '💻 IT業', text: 'IT業' },
+        { label: '🏥 医療', text: '医療' },
+        { label: '🛒 小売業', text: '小売業' },
+        { label: '⚖️ 士業', text: '士業' },
+        { label: '🏠 不動産業', text: '不動産業' },
+        { label: '🚚 運送業', text: '運送業' },
+        { label: '💇 美容業', text: '美容業' },
+        { label: '📚 教育サービス', text: '教育サービス' },
+        { label: '🏭 製造業', text: '製造業' },
         { label: '📦 その他', text: 'その他' },
       ]),
     ]);

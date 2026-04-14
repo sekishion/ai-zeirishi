@@ -8,12 +8,14 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Font, renderToBuffer } from '@react-pdf/renderer';
 
-// 日本語フォント登録
+// 日本語フォント登録（NEXT_PUBLIC_APP_URL必須。未設定だと日本語が表示されない）
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '';
+if (!APP_URL) {
+  console.error('[invoice-pdf] NEXT_PUBLIC_APP_URL is not set. PDF Japanese fonts will not load.');
+}
 Font.register({
   family: 'NotoSansJP',
-  src: process.env.NEXT_PUBLIC_APP_URL
-    ? `${process.env.NEXT_PUBLIC_APP_URL}/fonts/NotoSansJP-Regular.ttf`
-    : 'http://localhost:3000/fonts/NotoSansJP-Regular.ttf',
+  src: APP_URL ? `${APP_URL}/fonts/NotoSansJP-Regular.ttf` : '/fonts/NotoSansJP-Regular.ttf',
 });
 
 const s = StyleSheet.create({

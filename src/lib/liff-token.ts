@@ -15,7 +15,7 @@ function getSecret(): string {
   return secret;
 }
 const SECRET: string = getSecret();
-const TOKEN_TTL_MS = 5 * 60 * 1000; // 5分
+const TOKEN_TTL_MS = 30 * 60 * 1000; // 30分（請求書フォーム入力に十分な時間）
 
 export interface LiffTokenPayload {
   lineUserId: string;

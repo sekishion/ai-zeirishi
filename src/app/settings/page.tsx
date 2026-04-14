@@ -259,6 +259,10 @@ function SettingsContent() {
         )}
       </div>
 
+      {/* LINE連携 */}
+      <p className="text-[11px] font-bold text-gray-400 tracking-wider">LINE連携</p>
+      <LineLinkSection />
+
       {/* 会計ソフト連携 */}
       <p className="text-[11px] font-bold text-gray-400 tracking-wider">会計ソフト連携</p>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -369,6 +373,82 @@ function SettingsContent() {
       </div>
 
       <div className="h-4" />
+    </div>
+  );
+}
+
+function LineLinkSection() {
+  const [linkCode, setLinkCode] = useState('');
+  const [linking, setLinking] = useState(false);
+  const [linkResult, setLinkResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const handleLink = async () => {
+    if (linkCode.length !== 6) return;
+    setLinking(true);
+    setLinkResult(null);
+    try {
+      const res = await fetch('/api/account/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: linkCode.toUpperCase() }),
+      });
+      const data = await res.json();
+      setLinkResult({ ok: data.ok, message: data.message || data.error });
+      if (data.ok) {
+        setLinkCode('');
+        setTimeout(() => window.location.reload(), 2000);
+      }
+    } catch {
+      setLinkResult({ ok: false, message: '通信エラー' });
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden p-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 bg-[#06C755] rounded-xl flex items-center justify-center">
+          <span className="text-white font-bold text-[14px]">L</span>
+        </div>
+        <div className="flex-1">
+          <p className="text-[13px] font-bold text-gray-800">LINEアカウント連携</p>
+          <p className="text-[11px] text-gray-400">LINEで登録した取引をWebで見れるようにする</p>
+        </div>
+      </div>
+
+      <div className="bg-blue-50 rounded-xl p-3 mb-3">
+        <p className="text-[11px] text-blue-800 leading-relaxed">
+          <b>手順:</b><br/>
+          1. LINEで AI経理部長 に「<b>アカウント連携</b>」と送信<br/>
+          2. 表示された6桁コードを下に入力<br/>
+          3. LINEの取引データがこのWebアプリに表示されます
+        </p>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={linkCode}
+          onChange={e => setLinkCode(e.target.value.toUpperCase().slice(0, 6))}
+          placeholder="6桁コード"
+          maxLength={6}
+          className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-[16px] font-mono text-center tracking-widest focus:border-[#06C755] outline-none uppercase"
+        />
+        <button
+          onClick={handleLink}
+          disabled={linking || linkCode.length !== 6}
+          className="bg-[#06C755] text-white font-bold px-4 py-2.5 rounded-xl text-[13px] disabled:opacity-40"
+        >
+          {linking ? '...' : '連携'}
+        </button>
+      </div>
+
+      {linkResult && (
+        <div className={`mt-2 rounded-lg p-2 text-[12px] ${linkResult.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`}>
+          {linkResult.message}
+        </div>
+      )}
     </div>
   );
 }

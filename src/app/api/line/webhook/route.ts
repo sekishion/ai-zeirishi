@@ -683,6 +683,50 @@ export async function POST(req: NextRequest) {
             return;
           }
 
+          // アカウント連携コード発行
+          if (text === 'アカウント連携' || text === '連携' || text === 'Webと連携') {
+            if (!user.company_id) {
+              await replyMessage(replyToken, [textMessage('先に業種を選択して���ださい。')]);
+              return;
+            }
+            // 6桁コード生成（英数字、大文字）
+            const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+            const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5分有効
+
+            // DBに保存
+            const { createClient } = await import('@supabase/supabase-js');
+            const adminDb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+            await adminDb
+              .from('line_users')
+              .update({ link_code: code, link_code_expires_at: expiresAt })
+              .eq('line_user_id', lineUserId);
+
+            await replyMessage(replyToken, [{
+              type: 'flex',
+              altText: `連携コード: ${code}`,
+              contents: {
+                type: 'bubble',
+                header: {
+                  type: 'box', layout: 'vertical',
+                  contents: [{ type: 'text', text: '🔗 アカウント連携', weight: 'bold', size: 'md', color: '#1A3A5C' }],
+                  paddingAll: '16px', backgroundColor: '#EFF6FF',
+                },
+                body: {
+                  type: 'box', layout: 'vertical', spacing: 'md',
+                  contents: [
+                    { type: 'text', text: 'Webアプリとの連携コード', size: 'sm', color: '#666666' },
+                    { type: 'text', text: code, size: 'xxl', weight: 'bold', align: 'center', color: '#1A3A5C' },
+                    { type: 'text', text: '有効期限: 5分', size: 'xs', color: '#999999', align: 'center' },
+                    { type: 'separator', margin: 'lg' },
+                    { type: 'text', text: '手順:\n1. Webアプリにログイン\n2. 設定 → LINE連携\n3. このコードを入力', size: 'xs', color: '#666666', wrap: true, margin: 'md' },
+                  ],
+                  paddingAll: '16px',
+                },
+              },
+            }]);
+            return;
+          }
+
           // リッチメニュー: 請求書作成 → フォームを開く（HMAC署名トークン使用）
           if (text === '請求書を作りたい') {
             const token = signLiffToken(lineUserId);

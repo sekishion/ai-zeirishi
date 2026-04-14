@@ -676,6 +676,11 @@ export async function POST(req: NextRequest) {
                 { label: '🏥 医療', text: '医療' },
                 { label: '🛒 小売業', text: '小売業' },
                 { label: '⚖️ 士業', text: '士業' },
+                { label: '🏠 不動産業', text: '不動産業' },
+                { label: '🚚 運送業', text: '運送業' },
+                { label: '💇 美容業', text: '美容業' },
+                { label: '📚 教育サービス', text: '教育サービス' },
+                { label: '🏭 製造業', text: '製造業' },
                 { label: '📦 その他', text: 'その他' },
               ]),
             ]);
@@ -1078,9 +1083,10 @@ export async function POST(req: NextRequest) {
               await replyMessage(replyToken, [textMessage('除外できる取引がありません。')]);
               return;
             }
-            const ok = await softDeleteTransaction(lastTx[0].id, user.company_id, '個人支出として除外');
+            const txToExclude = lastTx[0];
+            const ok = await softDeleteTransaction(txToExclude.id, user.company_id, '個人支出として除外');
             if (ok) {
-              await replyMessage(replyToken, [textMessage('✅ 直近の取引を個人支出として除外しました')]);
+              await replyMessage(replyToken, [textMessage(`✅ 「${txToExclude.description.slice(0, 20)} ${yen(txToExclude.amount)}」を個人支出として除外しました。元に戻すには「取り消し」と送ってください`)]);
             } else {
               await replyMessage(replyToken, [textMessage('⚠️ 除外に失敗しました。もう一度お試しください。')]);
             }

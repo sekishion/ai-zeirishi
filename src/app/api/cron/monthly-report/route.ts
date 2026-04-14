@@ -53,7 +53,8 @@ export async function GET(req: NextRequest) {
       .select('*')
       .eq('company_id', user.company_id)
       .gte('date', monthStart)
-      .lt('date', nextMonth);
+      .lt('date', nextMonth)
+      .is('deleted_at', null);
 
     // 0件の場合も「データなし」メッセージを送信
     if (!txs || txs.length === 0) {

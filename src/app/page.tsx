@@ -62,6 +62,8 @@ export default function Home() {
   const safetyColor = months >= 6 ? '#059669' : months >= 3 ? '#D97706' : '#DC2626';
   const safetyText = months >= 6 ? '安全' : months >= 3 ? '注意' : '危険';
 
+  const hasNoTransactions = state.transactions.length === 0;
+
   return (
     <div className="space-y-3">
       {/* ヘッダー */}
@@ -70,6 +72,19 @@ export default function Home() {
         <h1 className="text-[18px] font-bold text-[#1A3A5C]">{new Date().getMonth() + 1}月のまとめ</h1>
         <p className="text-[11px] text-gray-400">更新: {new Date().getMonth() + 1}/{new Date().getDate()} {new Date().getHours()}:00</p>
       </div>
+
+      {/* LINE連携案内（取引が0件の場合） */}
+      {hasNoTransactions && (
+        <Link href="/settings" className="block">
+          <div className="bg-blue-50 rounded-[14px] border border-blue-200 px-4 py-4 text-center">
+            <p className="text-[13px] font-bold text-blue-800 mb-1">取引データがありません</p>
+            <p className="text-[12px] text-blue-600 leading-relaxed">
+              LINEで登録した取引をWebで見るには、設定 &rarr; LINE連携 でアカウントを紐付けてください
+            </p>
+            <span className="inline-block mt-2 text-[12px] text-blue-700 font-bold">設定を開く &rarr;</span>
+          </div>
+        </Link>
+      )}
 
       {/* 手元資金（ヒーロー） */}
       <div className="bg-white rounded-[14px] border border-gray-200 p-5 text-center">

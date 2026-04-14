@@ -524,7 +524,8 @@ export async function getMonthlyExpenseSummary(companyId: string): Promise<{
     .select('*')
     .eq('company_id', companyId)
     .gte('date', monthStart)
-    .lt('date', nextMonth);
+    .lt('date', nextMonth)
+    .is('deleted_at', null);
 
   if (error || !data) {
     return { totalExpense: 0, totalIncome: 0, transactionCount: 0, byCategory: [] };
@@ -576,6 +577,7 @@ export async function getRecentTransactions(companyId: string, limit = 10): Prom
     .from('transactions')
     .select('id, date, description, amount, type, category, category_label')
     .eq('company_id', companyId)
+    .is('deleted_at', null)
     .order('date', { ascending: false })
     .limit(limit);
 
@@ -608,7 +610,8 @@ export async function getCategoryMonthlyTotal(
     .eq('category', category)
     .eq('type', 'expense')
     .gte('date', monthStart)
-    .lt('date', nextMonth);
+    .lt('date', nextMonth)
+    .is('deleted_at', null);
 
   if (error || !data) return { total: 0, count: 0 };
 

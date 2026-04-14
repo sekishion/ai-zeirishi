@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     await saveIncomeTransaction(user.company_id, parsedAmount, client, description);
 
     const summary = await getMonthlyExpenseSummary(user.company_id);
-    const monthlyIncome = summary.totalIncome + parsedAmount;
+    const monthlyIncome = summary.totalIncome;
 
     await pushMessage(lineUserId, [{
       type: 'flex',

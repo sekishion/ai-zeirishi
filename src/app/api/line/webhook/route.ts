@@ -359,7 +359,7 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
       footer: {
         type: 'box', layout: 'horizontal', spacing: 'md',
         contents: [
-          { type: 'button', action: { type: 'message', label: '✓ OK', text: 'OK' }, style: 'primary', color: '#06C755', height: 'sm', flex: 1 },
+          { type: 'button', action: { type: 'message', label: '✓ OK', text: `OK:${txId}` }, style: 'primary', color: '#06C755', height: 'sm', flex: 1 },
           { type: 'button', action: { type: 'message', label: '科目を変更', text: `変更:${txId}` }, style: 'secondary', height: 'sm', flex: 1 },
         ],
         paddingAll: '12px',
@@ -852,13 +852,47 @@ export async function POST(req: NextRequest) {
             return;
           }
 
-          // 確認OK → 直近の取引を学習（counterpartyを正しく渡す。連打防止のため confirmed 状態のみ学習）
-          if (text === 'OK') {
+          // 業種変更（オンボーディング済みユーザーが業種を変えたい場合）
+          if (text === '業種変更' || text === '業種を変えたい') {
+            await updateLineUserOnboarding(lineUserId, { onboarding_step: 'industry_asked' });
+            await replyMessage(replyToken, [
+              textMessage('業種を選び直してください👇', [
+                { label: '🏗️ 建設業', text: '建設業' },
+                { label: '🍽️ 飲食業', text: '飲食業' },
+                { label: '💻 IT業', text: 'IT業' },
+                { label: '🏥 医療', text: '医療' },
+                { label: '🛒 小売業', text: '小売業' },
+                { label: '⚖️ 士業', text: '士業' },
+                { label: '🏠 不動産業', text: '不動産業' },
+                { label: '🚚 運送業', text: '運送業' },
+                { label: '💇 美容業', text: '美容業' },
+                { label: '📚 教育サービス', text: '教育サービス' },
+                { label: '🏭 製造業', text: '製造業' },
+                { label: '📦 その他', text: 'その他' },
+              ]),
+            ]);
+            return;
+          }
+
+          // 確認OK → 取引を学習（OK:txIdで特定取引、レガシー「OK」は直近取引にフォールバック）
+          if (text === 'OK' || text.startsWith('OK:')) {
             if (user.company_id) {
-              const lastTx = await getRecentTransactions(user.company_id, 1);
-              if (lastTx.length > 0 && lastTx[0].type === 'expense') {
-                const t = lastTx[0];
-                // counterparty を取得（descriptionから店名だけ抜き出す or DBから直接）
+              const specificTxId = text.startsWith('OK:') ? text.slice(3) : null;
+              let t: { id: string; description: string; category: string; categoryLabel: string; type: string } | undefined;
+
+              if (specificTxId) {
+                // 特定の取引IDが指定された場合 — owner検証してから学習
+                const recentTx = await getRecentTransactions(user.company_id, 50);
+                t = recentTx.find(tx => tx.id === specificTxId && tx.type === 'expense');
+              } else {
+                // レガシー: 「OK」のみ → 直近1件にフォールバック
+                const lastTx = await getRecentTransactions(user.company_id, 1);
+                if (lastTx.length > 0 && lastTx[0].type === 'expense') {
+                  t = lastTx[0];
+                }
+              }
+
+              if (t) {
                 const counterparty = await getTransactionCounterparty(t.id);
                 if (counterparty) {
                   await learnPattern(user.company_id, counterparty, t.description, t.category, t.categoryLabel, 'expense');

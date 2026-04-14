@@ -131,6 +131,10 @@ export default function InvoicesPage() {
           <h1 className="text-[17px] font-bold text-[#1A3A5C]">請求書を作成</h1>
         </div>
 
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] text-amber-800 leading-relaxed">
+          LINE のリッチメニューから「請求書を作りたい」で作成できます。Webからの作成は準備中です。
+        </div>
+
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-4">
           {/* Client */}
           <div>
@@ -223,11 +227,10 @@ export default function InvoicesPage() {
         </div>
 
         <button
-          onClick={() => setMode('preview')}
-          disabled={!client || subtotal === 0}
+          disabled
           className="w-full py-4 bg-[#1A3A5C] text-white rounded-2xl text-[15px] font-bold disabled:opacity-30"
         >
-          プレビューを確認 →
+          Webからの作成は準備中です
         </button>
         <button onClick={() => setMode('list')} className="w-full py-3 text-gray-400 text-[13px]">キャンセル</button>
       </div>

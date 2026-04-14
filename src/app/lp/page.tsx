@@ -372,7 +372,11 @@ export default function LPPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-gray-100 px-4 py-5 text-center">
+      <footer className="border-t border-gray-100 px-4 py-5 text-center space-y-2">
+        <div className="flex justify-center gap-4 text-[11px] text-gray-400">
+          <a href="/terms" className="underline hover:text-gray-600">利用規約</a>
+          <a href="/privacy" className="underline hover:text-gray-600">プライバシーポリシー</a>
+        </div>
         <p className="text-[11px] text-gray-400">中央総合株式会社</p>
       </footer>
     </div>

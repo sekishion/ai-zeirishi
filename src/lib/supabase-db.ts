@@ -124,6 +124,7 @@ export async function loadTransactions(companyId: string): Promise<Transaction[]
     .from('transactions')
     .select('*')
     .eq('company_id', companyId)
+    .is('deleted_at', null)
     .order('date', { ascending: false });
 
   if (error) {
@@ -145,14 +146,33 @@ export async function saveTransactions(companyId: string, transactions: Transact
   if (error) console.error('[Supabase] Save transactions failed:', error);
 }
 
-export async function deleteTransaction(txId: string): Promise<void> {
-  // pending_reviews も cascade で消える
+export async function deleteTransaction(txId: string, companyId?: string | null): Promise<void> {
+  // 電帳法: soft delete（deleted_at をセット。物理削除しない）
   const { error } = await supabase
     .from('transactions')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', txId);
 
-  if (error) console.error('[Supabase] Delete transaction failed:', error);
+  if (error) {
+    console.error('[Supabase] Soft-delete transaction failed:', error);
+    return;
+  }
+
+  // audit_logs に削除記録（電帳法：訂正削除の履歴）
+  if (companyId) {
+    const { error: auditErr } = await supabase
+      .from('audit_logs')
+      .insert({
+        company_id: companyId,
+        table_name: 'transactions',
+        record_id: txId,
+        action: 'delete',
+        old_values: { id: txId },
+        new_values: null,
+        changed_by: 'user',
+      });
+    if (auditErr) console.error('[Supabase] Audit log (delete) failed:', auditErr);
+  }
 }
 
 export async function updateTransaction(txId: string, updates: Partial<Transaction>): Promise<void> {
@@ -179,11 +199,12 @@ export async function updateTransaction(txId: string, updates: Partial<Transacti
 // ====== 確認待ち ======
 
 export async function loadPendingReviews(companyId: string): Promise<PendingItem[]> {
-  // まずこの会社の取引IDを取得し、それに紐づくレビューのみ取得
+  // まずこの会社の未削除取引IDを取得し、それに紐づくレビューのみ取得
   const { data: txIds } = await supabase
     .from('transactions')
     .select('id')
-    .eq('company_id', companyId);
+    .eq('company_id', companyId)
+    .is('deleted_at', null);
 
   if (!txIds || txIds.length === 0) return [];
 

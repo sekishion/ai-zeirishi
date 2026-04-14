@@ -13,7 +13,15 @@ function getFreeeClientSecret(): string {
 }
 
 export function getFreeeRedirectUri(): string {
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const base = process.env.NEXT_PUBLIC_APP_URL;
+  if (!base) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'NEXT_PUBLIC_APP_URL is not set. This environment variable is required in production for freee OAuth redirect URI.'
+      );
+    }
+    return 'http://localhost:3000/api/auth/freee/callback';
+  }
   return `${base}/api/auth/freee/callback`;
 }
 

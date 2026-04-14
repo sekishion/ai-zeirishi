@@ -6,4 +6,5 @@
 alter table public.line_users add column if not exists link_code text;
 alter table public.line_users add column if not exists link_code_expires_at timestamptz;
 
-create index if not exists idx_line_users_link_code on public.line_users(link_code) where link_code is not null;
+DROP INDEX IF EXISTS idx_line_users_link_code;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_line_users_link_code_unique ON public.line_users(link_code) WHERE link_code IS NOT NULL;

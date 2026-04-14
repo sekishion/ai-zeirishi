@@ -1,4 +1,5 @@
-export function formatAmount(amount: number): string {
+export function formatAmount(amount: number | null | undefined): string {
+  if (amount == null || Number.isNaN(amount)) return '¥0';
   const abs = Math.abs(amount);
   const sign = amount < 0 ? '-' : '';
   if (abs >= 100000000) {

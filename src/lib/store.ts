@@ -2,7 +2,8 @@
 
 import { createContext, useContext } from 'react';
 import type { Transaction, PendingItem, MonthlyReport, CashForecast, AIAccuracy, Filing, Notice, ReportListItem, MetricCardProps, ExpenseRequest, Document } from '@/types';
-import { learnFromTransaction } from '@/lib/learning';
+// NOTE: learnFromTransaction (localStorage) removed — DB learned_patterns is single source of truth
+// import { learnFromTransaction } from '@/lib/learning';  // DEPRECATED: see Issue 1
 
 export interface AppState {
   companyId: string | null;
@@ -284,19 +285,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ),
         pendingItems: state.pendingItems.filter(p => p.id !== action.id),
       };
-      // 学習エンジンにフィードバック
-      learnFromTransaction(
-        item.transaction.counterparty,
-        item.transaction.description,
-        resolvedCategory,
-        resolvedLabel,
-        item.transaction.type
-      );
+      // NOTE: localStorage learning removed — DB learned_patterns is single source of truth
       newState = recalculate(newState);
       saveToStorage(newState);
       // Supabase: 取引更新 + レビュー解決
-      dbUpdateTx(item.transaction.id, { category: resolvedCategory, categoryLabel: resolvedLabel, status: 'processed', confidence: 1.0 }).catch(() => {});
-      dbResolvePending(action.id, action.choiceValue).catch(() => {});
+      dbUpdateTx(item.transaction.id, { category: resolvedCategory, categoryLabel: resolvedLabel, status: 'processed', confidence: 1.0 }).catch((err) => { console.error('[Store] DB write failed (RESOLVE_PENDING/updateTx):', err); });
+      dbResolvePending(action.id, action.choiceValue).catch((err) => { console.error('[Store] DB write failed (RESOLVE_PENDING/resolve):', err); });
       return newState;
     }
 
@@ -310,26 +304,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       saveToStorage(newState);
       // Supabase: 新規取引+レビューを保存
       if (state.companyId) {
-        saveTransactions(state.companyId, action.transactions).catch(() => {});
-        savePendingReviews(state.companyId, action.pending).catch(() => {});
+        saveTransactions(state.companyId, action.transactions).catch((err) => { console.error('[Store] DB write failed (ADD_TRANSACTIONS/saveTx):', err); });
+        savePendingReviews(state.companyId, action.pending).catch((err) => { console.error('[Store] DB write failed (ADD_TRANSACTIONS/savePending):', err); });
       }
       return newState;
     }
 
     case 'UPDATE_TRANSACTION': {
-      const updated = { ...state.transactions.find(t => t.id === action.id)!, ...action.updates };
       newState = {
         ...state,
         transactions: state.transactions.map(t =>
           t.id === action.id ? { ...t, ...action.updates, status: 'processed' as const, confidence: 1.0 } : t
         ),
       };
-      if (action.updates.category || action.updates.categoryLabel) {
-        learnFromTransaction(updated.counterparty, updated.description, updated.category, updated.categoryLabel, updated.type);
-      }
+      // NOTE: localStorage learning removed — DB learned_patterns is single source of truth
       newState = recalculate(newState);
       saveToStorage(newState);
-      dbUpdateTx(action.id, { ...action.updates, status: 'processed', confidence: 1.0 }).catch(() => {});
+      dbUpdateTx(action.id, { ...action.updates, status: 'processed', confidence: 1.0 }).catch((err) => { console.error('[Store] DB write failed (UPDATE_TRANSACTION):', err); });
       return newState;
     }
 
@@ -341,7 +332,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
       newState = recalculate(newState);
       saveToStorage(newState);
-      dbDeleteTx(action.id).catch(() => {});
+      dbDeleteTx(action.id, state.companyId).catch((err) => { console.error('[Store] DB write failed (DELETE_TRANSACTION):', err); });
       return newState;
     }
 
@@ -408,7 +399,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
       saveToStorage(newState);
       if (state.companyId) {
-        saveCompanyInfo(state.companyId, action.companyInfo, action.companyName, action.ownerName).catch(() => {});
+        saveCompanyInfo(state.companyId, action.companyInfo, action.companyName, action.ownerName).catch((err) => { console.error('[Store] DB write failed (COMPLETE_SETUP):', err); });
       }
       return newState;
     }

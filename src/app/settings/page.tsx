@@ -322,7 +322,7 @@ function SettingsContent() {
 
       {/* Notifications */}
       <p className="text-[11px] font-bold text-gray-400 tracking-wider">通知</p>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-50">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden divide-y divide-gray-50 opacity-50 pointer-events-none">
         {[
           { name: '週次レポート（LINE）', on: true },
           { name: '月次レポート（LINE）', on: true },
@@ -330,8 +330,11 @@ function SettingsContent() {
           { name: '異常値アラート', on: true },
         ].map((item) => (
           <div key={item.name} className="flex items-center gap-3 px-4 py-3">
-            <p className="flex-1 text-[13px] text-gray-700">{item.name}</p>
-            <div className={`w-[44px] h-[26px] rounded-full relative cursor-pointer ${item.on ? 'bg-[#06C755]' : 'bg-gray-300'}`}>
+            <p className="flex-1 text-[13px] text-gray-700">
+              {item.name}
+              <span className="ml-1.5 text-[10px] bg-gray-100 text-gray-400 font-bold px-1.5 py-0.5 rounded-full">準備中</span>
+            </p>
+            <div className={`w-[44px] h-[26px] rounded-full relative ${item.on ? 'bg-[#06C755]' : 'bg-gray-300'}`}>
               <div className={`w-[22px] h-[22px] bg-white rounded-full absolute top-[2px] transition-all ${item.on ? 'right-[2px]' : 'left-[2px]'}`} />
             </div>
           </div>
@@ -341,9 +344,9 @@ function SettingsContent() {
       {/* Plan */}
       <p className="text-[11px] font-bold text-gray-400 tracking-wider">プラン</p>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 text-center">
-        <p className="text-[13px] font-bold text-[#1A3A5C]">スタンダードプラン</p>
-        <p className="text-[24px] font-black text-[#1A3A5C] mt-1">¥5,000<span className="text-[13px] font-normal text-gray-400">/月</span></p>
-        <p className="text-[11px] text-gray-400 mt-1">次回請求: 2026年5月1日</p>
+        <p className="text-[13px] font-bold text-[#1A3A5C]">βフリープラン</p>
+        <p className="text-[24px] font-black text-[#1A3A5C] mt-1">¥0<span className="text-[13px] font-normal text-gray-400">/月</span></p>
+        <p className="text-[11px] text-gray-400 mt-1">パイロット期間中は無料でご利用いただけます</p>
       </div>
 
       {/* Data management */}

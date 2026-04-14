@@ -51,15 +51,30 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (findErr || !lineUser) {
-    return NextResponse.json({ ok: false, error: '連携コードが見つかりません。LINEで「アカウント連携」と送って新しいコードを取得してくださ���。' }, { status: 404 });
+    return NextResponse.json({ ok: false, error: '連携コードが見つかりません。LINEで「アカウント連携」と送って新しいコードを取得してください。' }, { status: 404 });
   }
 
   // 4. 有効期限チェック
   if (lineUser.link_code_expires_at && new Date(lineUser.link_code_expires_at) < new Date()) {
-    return NextResponse.json({ ok: false, error: 'コードの有効期限が切れています。LINEで「アカウント連携」と送って新しいコードを取得してください。' }, { status: 410 });
+    return NextResponse.json({ ok: false, error: 'コードの有効期限が切れました。LINEで「アカウント連携」と送って新しいコードを取得してください。' }, { status: 410 });
   }
 
-  // 5. company の owner_id を設定
+  // 5. リンク済みチェック（既に他のWebユーザーに紐付いている場合は拒否）
+  if (lineUser.company_id) {
+    const { data: existingCompany } = await adminSupabase
+      .from('companies')
+      .select('owner_id')
+      .eq('id', lineUser.company_id)
+      .single();
+    if (existingCompany?.owner_id && existingCompany.owner_id !== user.id) {
+      return NextResponse.json({ ok: false, error: 'このLINEアカウントは既に別のWebアカウントに連携されています。' }, { status: 409 });
+    }
+    if (existingCompany?.owner_id === user.id) {
+      return NextResponse.json({ ok: true, message: '既に連携済みです。' });
+    }
+  }
+
+  // 6. company の owner_id を設定
   if (lineUser.company_id) {
     // 既存のWeb側companyがあれば削除（取引0件の場合のみ）
     const { data: existingWebCompany } = await adminSupabase

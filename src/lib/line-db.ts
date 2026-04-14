@@ -388,6 +388,17 @@ export async function upsertPartner(
 }
 
 /**
+ * LINE連携コードを保存。
+ */
+export async function saveLinkCode(lineUserId: string, code: string, expiresAt: string): Promise<void> {
+  const { error } = await supabase
+    .from('line_users')
+    .update({ link_code: code, link_code_expires_at: expiresAt })
+    .eq('line_user_id', lineUserId);
+  if (error) console.error('[LINE DB] saveLinkCode failed:', error);
+}
+
+/**
  * 取引先候補を取得（最近使った順）。
  */
 export async function getRecentPartners(companyId: string, limit = 10): Promise<Array<{

@@ -26,6 +26,7 @@ import {
   learnPattern, predictFromLearned,
   getTransactionCounterparty,
   getCompanyInfo,
+  saveLinkCode,
   type LineUser, type ReceiptData,
 } from '@/lib/line-db';
 import { signLiffToken } from '@/lib/liff-token';
@@ -107,11 +108,26 @@ function yen(amount: number): string {
 
 async function handleFollow(replyToken: string, lineUserId: string) {
   const profile = await getLineProfile(lineUserId);
-  await createLineUser(lineUserId, profile.displayName);
+
+  // re-follow ガード: 既にDBにいる場合は新規作成しない（orphan company防止）
+  const existingUser = await getLineUser(lineUserId);
+  if (existingUser) {
+    // 再フォロー → 業種未完了なら再度オンボーディング、完了済みなら「おかえり」
+    if (existingUser.onboarding_step === 'completed') {
+      const name = profile.displayName || 'おかえりなさい';
+      await replyMessage(replyToken, [
+        textMessage(`${name}さん、おかえりなさい！\nAI経理部長です 📊\n\nレシートを送ったり、質問を送ったり、いつでもどうぞ！`),
+      ]);
+      return;
+    }
+    // 業種未選択 → 再度聞く
+    await updateLineUserOnboarding(lineUserId, { onboarding_step: 'industry_asked' });
+  } else {
+    await createLineUser(lineUserId, profile.displayName);
+    await updateLineUserOnboarding(lineUserId, { onboarding_step: 'industry_asked' });
+  }
 
   const name = profile.displayName || 'はじめまして';
-
-  await updateLineUserOnboarding(lineUserId, { onboarding_step: 'industry_asked' });
 
   // 規約同意フロー: 利用規約・プライバシーポリシーへの同意を取る（個情法第18条対応）
   await replyMessage(replyToken, [
@@ -686,20 +702,15 @@ export async function POST(req: NextRequest) {
           // アカウント連携コード発行
           if (text === 'アカウント連携' || text === '連携' || text === 'Webと連携') {
             if (!user.company_id) {
-              await replyMessage(replyToken, [textMessage('先に業種を選択して���ださい。')]);
+              await replyMessage(replyToken, [textMessage('先に業種を選択してください。')]);
               return;
             }
             // 6桁コード生成（英数字、大文字）
             const code = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
             const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5分有効
 
-            // DBに保存
-            const { createClient } = await import('@supabase/supabase-js');
-            const adminDb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-            await adminDb
-              .from('line_users')
-              .update({ link_code: code, link_code_expires_at: expiresAt })
-              .eq('line_user_id', lineUserId);
+            // DBに保存（line-db.tsのヘルパーを使用）
+            await saveLinkCode(lineUserId, code, expiresAt);
 
             await replyMessage(replyToken, [{
               type: 'flex',

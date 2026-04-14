@@ -27,6 +27,8 @@ import {
   getTransactionCounterparty,
   getCompanyInfo,
   saveLinkCode,
+  checkDuplicateReceipt,
+  softDeleteTransaction,
   type LineUser, type ReceiptData,
 } from '@/lib/line-db';
 import { signLiffToken } from '@/lib/liff-token';
@@ -301,7 +303,7 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
     }
   }
 
-  // 3. DBに保存（画像も Storage に保存）
+  // 3. 重複チェック（同じ店名・金額・日付の取引がないか）
   if (!user.company_id) {
     await replyMessage(replyToken, [
       textMessage('エラーが発生しました。もう一度友だち追加をお試しください。'),
@@ -309,17 +311,36 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
     return;
   }
 
-  const txId = await saveReceiptTransaction(user.company_id, receipt, imageBuffer);
+  const receiptDate = receipt.date || new Date().toISOString().split('T')[0];
+  const isDuplicate = await checkDuplicateReceipt(user.company_id, receipt.store, receipt.amount, receiptDate);
+  if (isDuplicate) {
+    receipt.needsReview = true;
+  }
 
-  // 4. 同カテゴリの今月合計を取得
+  // 4. DBに保存（画像も Storage に保存）
+  const { txId, imageUploadFailed } = await saveReceiptTransaction(user.company_id, receipt, imageBuffer);
+
+  // 5. 同カテゴリの今月合計を取得
   const monthlyTotal = await getCategoryMonthlyTotal(user.company_id, receipt.category);
 
-  // 5. Flex Messageカードで返信
+  // 6. Flex Messageカードで返信
   const amountStr = receipt.amount ? yen(receipt.amount) : '金額不明';
   const storeStr = receipt.store || '不明';
   const categoryStr = receipt.categoryLabel || receipt.category;
   const newTotal = monthlyTotal.total + (receipt.amount || 0);
   const newCount = monthlyTotal.count + 1;
+
+  // 警告メッセージを構築
+  const warnings: { type: 'text'; text: string; size: 'xs'; color: string; margin: 'sm'; wrap: true }[] = [];
+  if (receipt.confidence < 0.8) {
+    warnings.push({ type: 'text' as const, text: '⚠️ 分類に自信がありません', size: 'xs' as const, color: '#ff6b6b', margin: 'sm' as const, wrap: true as const });
+  }
+  if (isDuplicate) {
+    warnings.push({ type: 'text' as const, text: `⚠️ 同じ店名・金額の取引が今日既に登録されています。重複の場合はLINEで「削除 ${txId}」と送ってください。`, size: 'xs' as const, color: '#ff6b6b', margin: 'sm' as const, wrap: true as const });
+  }
+  if (imageUploadFailed) {
+    warnings.push({ type: 'text' as const, text: '⚠️ レシート画像の保存に失敗しました。再送をお願いします。', size: 'xs' as const, color: '#ff6b6b', margin: 'sm' as const, wrap: true as const });
+  }
 
   await replyMessage(replyToken, [{
     type: 'flex',
@@ -352,7 +373,7 @@ ${industryRules.map((r, i) => `${i + 1}. ${r}`).join('\n')}
           ]}] : []),
           { type: 'separator', margin: 'lg' },
           { type: 'text', text: `今月の${categoryStr}: ${yen(newTotal)}（${newCount}件）`, size: 'xs', color: '#888888', margin: 'md' },
-          ...(receipt.confidence < 0.8 ? [{ type: 'text' as const, text: '⚠️ 分類に自信がありません', size: 'xs' as const, color: '#ff6b6b', margin: 'sm' as const }] : []),
+          ...warnings,
         ],
         paddingAll: '16px',
       },
@@ -645,7 +666,10 @@ export async function POST(req: NextRequest) {
               return;
             }
 
-            const breakdownContents = summary.byCategory.slice(0, 5).map(c => ({
+            const maxCategories = 10;
+            const shownCategories = summary.byCategory.slice(0, maxCategories);
+            const remainingCount = summary.byCategory.length - shownCategories.length;
+            const breakdownContents: Record<string, unknown>[] = shownCategories.map(c => ({
               type: 'box' as const, layout: 'horizontal' as const, margin: 'sm' as const,
               contents: [
                 { type: 'text' as const, text: c.label, size: 'sm' as const, color: '#555555', flex: 2 },
@@ -653,6 +677,11 @@ export async function POST(req: NextRequest) {
                 { type: 'text' as const, text: `${c.count}件`, size: 'xs' as const, color: '#aaaaaa', align: 'end' as const, flex: 1 },
               ],
             }));
+            if (remainingCount > 0) {
+              breakdownContents.push({
+                type: 'text', text: `他${remainingCount}件`, size: 'xs', color: '#aaaaaa', margin: 'sm', align: 'end',
+              });
+            }
 
             await replyMessage(replyToken, [{
               type: 'flex',
@@ -939,6 +968,67 @@ export async function POST(req: NextRequest) {
               ]);
               return;
             }
+          }
+
+          // 削除コマンド: 「削除 txId」or「削除」（直近5件表示）
+          if (text === '削除' || text.startsWith('削除 ') || text.startsWith('削除:')) {
+            if (!user.company_id) {
+              await replyMessage(replyToken, [textMessage('まだデータがありません。')]);
+              return;
+            }
+            const rawId = text.replace(/^削除[\s:]?/, '').trim();
+            if (rawId) {
+              // 特定の取引を削除
+              const recentTx = await getRecentTransactions(user.company_id, 50);
+              const tx = recentTx.find(t => t.id === rawId);
+              if (!tx) {
+                await replyMessage(replyToken, [textMessage('⚠️ 該当する取引が見つかりません。')]);
+                return;
+              }
+              const ok = await softDeleteTransaction(rawId, user.company_id);
+              if (ok) {
+                await replyMessage(replyToken, [textMessage('✅ 削除しました')]);
+              } else {
+                await replyMessage(replyToken, [textMessage('⚠️ 削除に失敗しました。もう一度お試しください。')]);
+              }
+            } else {
+              // 直近5件を表示して選択させる
+              const recentTx = await getRecentTransactions(user.company_id, 5);
+              if (recentTx.length === 0) {
+                await replyMessage(replyToken, [textMessage('削除できる取引がありません。')]);
+                return;
+              }
+              await replyMessage(replyToken, [
+                textMessage(
+                  '削除する取引を選んでください👇',
+                  recentTx.map(t => ({
+                    label: `${t.date.slice(5)} ${yen(t.amount)} ${t.description.slice(0, 8)}`,
+                    text: `削除:${t.id}`,
+                  })),
+                ),
+              ]);
+            }
+            return;
+          }
+
+          // 個人支出除外: 直近の取引を個人支出として論理削除
+          if (text === '個人' || text === '個人支出') {
+            if (!user.company_id) {
+              await replyMessage(replyToken, [textMessage('まだデータがありません。')]);
+              return;
+            }
+            const lastTx = await getRecentTransactions(user.company_id, 1);
+            if (lastTx.length === 0) {
+              await replyMessage(replyToken, [textMessage('除外できる取引がありません。')]);
+              return;
+            }
+            const ok = await softDeleteTransaction(lastTx[0].id, user.company_id, '個人支出として除外');
+            if (ok) {
+              await replyMessage(replyToken, [textMessage('✅ 直近の取引を個人支出として除外しました')]);
+            } else {
+              await replyMessage(replyToken, [textMessage('⚠️ 除外に失敗しました。もう一度お試しください。')]);
+            }
+            return;
           }
 
           // 通常のテキスト質問

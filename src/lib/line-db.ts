@@ -141,6 +141,30 @@ export async function updateLineUserOnboarding(
   }
 }
 
+// ====== 重複検出 ======
+
+/**
+ * 同じ取引先+金額+日付の取引が既に存在するかチェック（レシート重複検出）。
+ */
+export async function checkDuplicateReceipt(
+  companyId: string,
+  store: string | null,
+  amount: number | null,
+  date: string,
+): Promise<boolean> {
+  if (!store || !amount) return false;
+  const { data } = await supabase
+    .from('transactions')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('counterparty', store)
+    .eq('amount', amount)
+    .eq('date', date)
+    .is('deleted_at', null)
+    .limit(1);
+  return (data != null && data.length > 0);
+}
+
 // ====== 取引の保存・読み取り ======
 
 export interface ReceiptData {
@@ -163,15 +187,16 @@ export interface ReceiptData {
  * - レシート画像を Supabase Storage に保存（電帳法対応：7年保管）
  * - confidence < 0.85 or needsReview なら pending_reviews にも自動INSERT
  * - audit_logs に作成記録を残す（電帳法対応）
- * 返り値: 保存されたtransactionのID。
+ * 返り値: { txId: 保存されたtransactionのID, imageUploadFailed: 画像保存が失敗したか }
  */
 export async function saveReceiptTransaction(
   companyId: string,
   receipt: ReceiptData,
   imageBuffer?: Buffer,
-): Promise<string> {
+): Promise<{ txId: string; imageUploadFailed: boolean }> {
   const txId = crypto.randomUUID();
   const today = jstToday();
+  let imageUploadFailed = false;
 
   // 1. レシート画像を Supabase Storage に保存（電帳法：受領証憑7年保管）
   let receiptStoragePath: string | null = null;
@@ -186,6 +211,7 @@ export async function saveReceiptTransaction(
       });
     if (uploadErr) {
       console.error('[LINE DB] Receipt image upload failed:', uploadErr);
+      imageUploadFailed = true;
       // 画像保存失敗してもDB保存は継続（電帳法違反警告は別途出す）
     } else {
       receiptStoragePath = path;
@@ -244,6 +270,11 @@ export async function saveReceiptTransaction(
           { label: '交通費', value: '旅費交通費' },
           { label: '通信費', value: '通信費' },
           { label: '雑費', value: '雑費' },
+          { label: '備品', value: '工具器具備品' },
+          { label: '車両', value: '車両運搬具' },
+          { label: '業務委託', value: '業務委託料' },
+          { label: '広告費', value: '広告宣伝費' },
+          { label: '立替精算', value: '役員借入金' },
         ],
       });
   }
@@ -269,7 +300,7 @@ export async function saveReceiptTransaction(
       if (auditErr) console.error('[LINE DB] Audit log failed:', auditErr);
     });
 
-  return txId;
+  return { txId, imageUploadFailed };
 }
 
 /**
@@ -632,6 +663,33 @@ export async function saveIncomeTransaction(
   });
 
   return txId;
+}
+
+// ====== 取引の論理削除 ======
+
+/**
+ * 取引を論理削除（deleted_at を設定）+ audit_log 記録。
+ */
+export async function softDeleteTransaction(txId: string, companyId: string, reason?: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('transactions')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', txId)
+    .eq('company_id', companyId);
+
+  if (error) { console.error('[LINE DB] Soft delete failed:', error); return false; }
+
+  // audit log
+  await supabase.from('audit_logs').insert({
+    company_id: companyId,
+    table_name: 'transactions',
+    record_id: txId,
+    action: 'delete',
+    new_values: { reason: reason || 'user_deleted_via_line' },
+    changed_by: 'user',
+  });
+
+  return true;
 }
 
 // ====== 学習エンジン ======
